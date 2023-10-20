@@ -206,8 +206,7 @@ class DeltaOptionSuite extends QueryTest
     CompressionCodec.UNCOMPRESSED -> "",
     CompressionCodec.SNAPPY -> "snappy.",
     CompressionCodec.GZIP -> "gz.",
-    CompressionCodec.LZ4 -> "lz4hadoop.",
-    // CompressionCodec.LZ4_RAW -> "lz4raw.", // Support is not yet available in Spark 3.5
+    CompressionCodec.LZ4 -> "lz4.",
     CompressionCodec.ZSTD -> "zstd."
   )
 

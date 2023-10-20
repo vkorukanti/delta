@@ -38,7 +38,6 @@ import org.json4s.JValue
 
 import org.apache.spark.{SparkConf, SparkEnv, SparkException}
 import org.apache.spark.sql.{AnalysisException, SparkSession}
-import org.apache.spark.sql.catalyst.ExtendedAnalysisException
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.catalyst.analysis.UnresolvedAttribute
 import org.apache.spark.sql.catalyst.catalog.CatalogTable
@@ -244,7 +243,7 @@ trait DeltaErrorsBase
       startPosition: Option[Int] = None,
       plan: Option[LogicalPlan] = None,
       cause: Option[Throwable] = None): AnalysisException = {
-    new ExtendedAnalysisException(msg, line, startPosition, plan, cause)
+    new AnalysisException(msg, line, startPosition, plan, cause)
   }
 
   def notNullColumnMissingException(constraint: Constraints.NotNull): Throwable = {

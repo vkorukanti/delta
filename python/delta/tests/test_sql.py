@@ -14,9 +14,6 @@
 # limitations under the License.
 #
 
-# mypy: disable-error-code="union-attr"
-# mypy: disable-error-code="attr-defined"
-
 import unittest
 import tempfile
 import shutil

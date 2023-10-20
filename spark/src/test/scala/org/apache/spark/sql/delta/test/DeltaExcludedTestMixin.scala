@@ -24,7 +24,7 @@ import org.scalatest.Tag
 trait DeltaExcludedTestMixin extends QueryTest {
 
   /** Tests to be ignored by the runner. */
-  override def excluded: Seq[String] = Seq.empty
+  def excluded: Seq[String] = Seq.empty
 
   protected override def test(testName: String, testTags: Tag*)
     (testFun: => Any)

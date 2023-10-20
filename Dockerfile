@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-FROM ubuntu:focal-20221019
 
 ENV DEBIAN_FRONTEND noninteractive
 ENV DEBCONF_NONINTERACTIVE_SEEN true
@@ -27,21 +26,15 @@ RUN apt-get install -y python3.8
 RUN apt-get install -y python3-pip
 RUN apt-get install -y git
 
+# Install pip3
+RUN apt-get update && apt-get install -y python3-pip
 # Upgrade pip. This is needed to use prebuilt wheels for packages cffi (dep of cryptography) and
 # cryptography. Otherwise, building wheels for these packages fails.
 RUN pip3 install --upgrade pip
 
-RUN pip3 install pyspark==3.5.0
+RUN pip3 install pyspark==3.4.0
 
-RUN pip3 install mypy==0.982
-
-RUN pip3 install pydocstyle==3.0.0
-
-RUN pip3 install pandas==1.0.5
-
-RUN pip3 install pyarrow==8.0.0
-
-RUN pip3 install numpy==1.20.3
+RUN pip3 install mypy==0.910
 
 RUN pip3 install importlib_metadata==3.10.0
 

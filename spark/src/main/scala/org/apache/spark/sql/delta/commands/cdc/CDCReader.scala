@@ -35,7 +35,6 @@ import org.apache.spark.sql.{DataFrame, Dataset, Row, SparkSession, SQLContext}
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.{Attribute, AttributeReference, Literal}
 import org.apache.spark.sql.catalyst.plans.logical.Statistics
-import org.apache.spark.sql.catalyst.types.DataTypeUtils.toAttributes
 import org.apache.spark.sql.execution.LogicalRDD
 import org.apache.spark.sql.execution.datasources.{HadoopFsRelation, LogicalRelation}
 import org.apache.spark.sql.internal.SQLConf
@@ -633,7 +632,7 @@ trait CDCReaderImpl extends DeltaLogging {
     // NOTE: We need to manually set the stats to 0 otherwise we will use default stats of INT_MAX,
     // which causes lots of optimizations to be applied wrong.
     val emptyRdd = LogicalRDD(
-      toAttributes(readSchema),
+      readSchema.toAttributes,
       spark.sparkContext.emptyRDD[InternalRow],
       isStreaming = isStreaming
     )(spark.sqlContext.sparkSession, Some(Statistics(0, Some(0))))

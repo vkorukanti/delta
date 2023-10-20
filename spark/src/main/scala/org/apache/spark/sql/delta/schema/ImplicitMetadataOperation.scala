@@ -22,7 +22,6 @@ import org.apache.spark.sql.delta.metering.DeltaLogging
 import org.apache.spark.sql.delta.util.PartitionUtils
 
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.sql.catalyst.types.DataTypeUtils.toAttributes
 import org.apache.spark.sql.types.StructType
 
 /**
@@ -44,7 +43,7 @@ trait ImplicitMetadataOperation extends DeltaLogging {
       if (colMatches.length > 1) {
         throw DeltaErrors.ambiguousPartitionColumnException(columnName, colMatches)
       } else if (colMatches.isEmpty) {
-        throw DeltaErrors.partitionColumnNotFoundException(columnName, toAttributes(schema))
+        throw DeltaErrors.partitionColumnNotFoundException(columnName, schema.toAttributes)
       }
       colMatches.head.name
     }

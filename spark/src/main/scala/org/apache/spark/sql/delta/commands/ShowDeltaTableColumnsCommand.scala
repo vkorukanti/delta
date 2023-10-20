@@ -23,7 +23,6 @@ import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
 import org.apache.spark.sql.catalyst.expressions.Attribute
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
 import org.apache.spark.sql.catalyst.trees.UnaryLike
-import org.apache.spark.sql.catalyst.types.DataTypeUtils.toAttributes
 import org.apache.spark.sql.execution.command.RunnableCommand
 
 /**
@@ -39,7 +38,7 @@ case class TableColumns(col_name: String)
 case class ShowDeltaTableColumnsCommand(child: LogicalPlan)
   extends RunnableCommand with UnaryLike[LogicalPlan] with DeltaCommand {
 
-  override val output: Seq[Attribute] = toAttributes(ExpressionEncoder[TableColumns]().schema)
+  override val output: Seq[Attribute] = ExpressionEncoder[TableColumns]().schema.toAttributes
 
   override protected def withNewChildInternal(newChild: LogicalPlan): ShowDeltaTableColumnsCommand =
     copy(child = newChild)
