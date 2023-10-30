@@ -18,7 +18,7 @@ package io.delta.kernel.internal.replay;
 import io.delta.kernel.data.ColumnarBatch;
 
 /** Internal wrapper class holding information needed to perform log replay. */
-class ActionWrapper {
+public class ActionWrapper {
     private final ColumnarBatch columnarBatch;
     private final boolean isFromCheckpoint;
     private final long version;

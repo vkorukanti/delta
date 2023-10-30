@@ -26,13 +26,12 @@ import io.delta.kernel.internal.actions.Metadata;
 import io.delta.kernel.internal.actions.Protocol;
 import io.delta.kernel.internal.fs.Path;
 import io.delta.kernel.internal.replay.LogReplay;
-import io.delta.kernel.internal.snapshot.LogSegment;
-import io.delta.kernel.internal.snapshot.SnapshotHint;
 
 /**
  * Implementation of {@link Snapshot}.
  */
 public class SnapshotImpl implements Snapshot {
+    private final Path logPath;
     private final Path dataPath;
     private final long version;
     private final LogReplay logReplay;
@@ -43,21 +42,15 @@ public class SnapshotImpl implements Snapshot {
             Path logPath,
             Path dataPath,
             long version,
-            LogSegment logSegment,
-            TableClient tableClient,
-            long timestamp,
-            Optional<SnapshotHint> snapshotHint) {
+            LogReplay logReplay,
+            Protocol protocol,
+            Metadata metadata) {
+        this.logPath = logPath;
         this.dataPath = dataPath;
         this.version = version;
-        this.logReplay = new LogReplay(
-            logPath,
-            dataPath,
-            version,
-            tableClient,
-            logSegment,
-            snapshotHint);
-        this.protocol = logReplay.getProtocol();
-        this.metadata = logReplay.getMetadata();
+        this.logReplay = logReplay;
+        this.protocol = protocol;
+        this.metadata = metadata;
     }
 
     @Override
@@ -102,5 +95,13 @@ public class SnapshotImpl implements Snapshot {
      */
     public Optional<Long> getLatestTransactionVersion(String applicationId) {
         return logReplay.getLatestTransactionIdentifier(applicationId);
+    }
+
+    public Path getLogPath() {
+        return logPath;
+    }
+
+    public Path getDataPath() {
+        return dataPath;
     }
 }

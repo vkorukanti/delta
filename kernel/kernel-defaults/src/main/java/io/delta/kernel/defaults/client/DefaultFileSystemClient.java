@@ -92,6 +92,13 @@ public class DefaultFileSystemClient
     }
 
     @Override
+    public void mkdir(String path) throws IOException {
+        Path pathObject = new Path(path);
+        FileSystem fs = pathObject.getFileSystem(hadoopConf);
+        fs.mkdirs(pathObject);
+    }
+
+    @Override
     public CloseableIterator<ByteArrayInputStream> readFiles(
             CloseableIterator<FileReadRequest> readRequests) {
         return readRequests.map(elem ->

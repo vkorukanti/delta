@@ -19,23 +19,27 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.delta.storage.LocalLogStore;
+import io.delta.storage.LogStore;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.*;
 
 import io.delta.kernel.client.JsonHandler;
 import io.delta.kernel.data.*;
 import io.delta.kernel.expressions.Predicate;
-import io.delta.kernel.types.StructType;
+import io.delta.kernel.types.*;
 import io.delta.kernel.utils.CloseableIterator;
 import io.delta.kernel.utils.FileStatus;
 
 import io.delta.kernel.internal.util.Utils;
+import io.delta.kernel.internal.util.VectorUtils;
 import static io.delta.kernel.internal.util.Preconditions.checkArgument;
 
 import io.delta.kernel.defaults.internal.data.DefaultJsonRow;
@@ -174,6 +178,45 @@ public class DefaultJsonHandler implements JsonHandler {
         };
     }
 
+    @Override
+    public void writeJsonFileAtomically(String filePath, CloseableIterator<Row> data)
+        throws IOException {
+        // TODO: We need an API at the `delta-storage` or in `kernel-defaults` to create
+        // LogStore based on scheme in the file path. Similar to the standalone `LogStoreProvider`.
+        LogStore logStore = new LocalLogStore(hadoopConf);
+        Path path = new Path(filePath);
+        path = logStore.resolvePathOnPhysicalStorage(path, hadoopConf);
+        try {
+            logStore.write(
+                path,
+                new Iterator<String>() {
+                    @Override
+                    public boolean hasNext() {
+                        return data.hasNext();
+                    }
+
+                    @Override
+                    public String next() {
+                        return serializeAsJson(data.next());
+                    }
+                },
+                false /* overwrite */,
+                hadoopConf);
+        } finally {
+            Utils.closeCloseables(data);
+        }
+    }
+
+    private String serializeAsJson(Row row) {
+        try {
+            Map<String, Object> map = convertToMap(row);
+            mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
+            return mapper.writeValueAsString(map);
+        } catch (JsonProcessingException ex) {
+            throw new RuntimeException(String.format("Could not serialize JSON: %s", row), ex);
+        }
+    }
+
     private Row parseJson(String json, StructType readSchema) {
         try {
             final JsonNode jsonNode = objectReaderReadBigDecimals.readTree(json);
@@ -181,5 +224,31 @@ public class DefaultJsonHandler implements JsonHandler {
         } catch (JsonProcessingException ex) {
             throw new RuntimeException(String.format("Could not parse JSON: %s", json), ex);
         }
+    }
+
+    private Map<String, Object> convertToMap(Row row) {
+        Map<String, Object> map = new HashMap<>();
+
+        StructType schema = row.getSchema();
+        for (int columnOrdinal = 0; columnOrdinal < schema.length(); columnOrdinal++) {
+            StructField field = schema.at(columnOrdinal);
+            DataType dataType = field.getDataType();
+            if (dataType instanceof MapType) {
+                MapType mapType = (MapType) dataType;
+                if (!(mapType.getKeyType() instanceof StringType)) {
+                    throw new IllegalArgumentException("Only string key type is supported in " +
+                            "map type for serialization to JSON");
+                }
+            }
+            Object value =
+                VectorUtils.getValueAsObject(row, columnOrdinal, field.getDataType());
+            if (value instanceof Row) {
+                value = convertToMap((Row) value);
+            }
+
+            map.put(field.getName(), value);
+        }
+
+        return map;
     }
 }

@@ -66,13 +66,15 @@ public interface JsonHandler {
      * @return a {@link ColumnarBatch} of schema {@code outputSchema} with one row for each entry
      * in {@code jsonStringVector}
      */
-    ColumnarBatch parseJson(ColumnVector jsonStringVector, StructType outputSchema,
+    ColumnarBatch parseJson(
+            ColumnVector jsonStringVector,
+            StructType outputSchema,
             Optional<ColumnVector> selectionVector);
 
     /**
      * Deserialize the Delta schema from {@code structTypeJson} according to the Delta Protocol
      * <a href="https://github.com/delta-io/delta/blob/master/PROTOCOL.md#primitive-types">
-     *    schema serialization rules </a>.
+     * schema serialization rules </a>.
      *
      * @param structTypeJson the JSON formatted schema string to parse
      * @return the parsed {@link StructType}
@@ -95,7 +97,21 @@ public interface JsonHandler {
      * @throws IOException if an I/O error occurs during the read.
      */
     CloseableIterator<ColumnarBatch> readJsonFiles(
-        CloseableIterator<FileStatus> fileIter,
-        StructType physicalSchema,
-        Optional<Predicate> predicate) throws IOException;
+            CloseableIterator<FileStatus> fileIter,
+            StructType physicalSchema,
+            Optional<Predicate> predicate) throws IOException;
+
+    /**
+     * Write each `Row` in given `data` serialized as JSON and in one line. This call
+     * either succeeds in creating the file with given contents or no file is created at
+     * all.
+     * TODO: should the serialization of the `Row` happen in the `kernel-api` module?
+     *  - in case of conflict resolution, we avoid the cost of serializing it again.
+     *  - but it could cause memory to spike in `kernel-api` module.
+     * <p>
+     * throws {@link java.nio.file.FileAlreadyExistsException} if the file already exists.
+     * throws {@link IOException} if any other error occurs.
+     */
+    void writeJsonFileAtomically(String filePath, CloseableIterator<Row> data)
+            throws IOException;
 }

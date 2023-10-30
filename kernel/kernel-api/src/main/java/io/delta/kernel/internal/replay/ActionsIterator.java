@@ -43,7 +43,7 @@ import static io.delta.kernel.internal.util.Utils.toCloseableIterator;
  * <p>
  * Users must pass in a `readSchema` to select which actions and sub-fields they want to consume.
  */
-class ActionsIterator implements CloseableIterator<ActionWrapper> {
+public class ActionsIterator implements CloseableIterator<ActionWrapper> {
     private final TableClient tableClient;
 
     private final Optional<Predicate> checkpointPredicate;
@@ -69,7 +69,7 @@ class ActionsIterator implements CloseableIterator<ActionWrapper> {
 
     private boolean closed;
 
-    ActionsIterator(
+    public ActionsIterator(
             TableClient tableClient,
             List<FileStatus> files,
             StructType readSchema,

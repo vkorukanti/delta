@@ -25,8 +25,7 @@ import static java.util.Arrays.asList;
 
 import io.delta.kernel.client.ExpressionHandler;
 import io.delta.kernel.client.TableClient;
-import io.delta.kernel.data.ColumnVector;
-import io.delta.kernel.data.ColumnarBatch;
+import io.delta.kernel.data.*;
 import io.delta.kernel.expressions.*;
 import io.delta.kernel.types.*;
 import static io.delta.kernel.expressions.AlwaysFalse.ALWAYS_FALSE;
@@ -100,6 +99,67 @@ public class PartitionUtils {
         }
 
         return dataBatch;
+    }
+
+    /**
+     * Convert the given partition values to a {@link MapValue} that can be serialized to a Delta
+     * commit file.
+     *
+     * @param partitionValueMap
+     * @return
+     */
+    public static MapValue serializePartitionMap(Map<String, Literal> partitionValueMap) {
+        if (partitionValueMap == null || partitionValueMap.size() == 0) {
+            return VectorUtils.stringStringMapValue(Collections.emptyMap());
+        }
+
+        Map<String, String> serializedPartValues =
+                partitionValueMap.entrySet().stream().map(entry -> {
+                    String partColName = entry.getKey();
+                    Literal partValue = entry.getValue();
+
+                    if (partValue == null) {
+                        return new Tuple2<>(partColName, (String) null);
+                    } else {
+                        return new Tuple2<>(partColName, serializePartitionValue(partValue));
+                    }
+                }).collect(Collectors.toMap(
+                    tuple2 -> tuple2._1,
+                    tuple2 -> tuple2._2
+                ));
+
+        return VectorUtils.stringStringMapValue(serializedPartValues);
+    }
+
+    public static String serializePartitionValue(Literal literal) {
+        DataType dataType = literal.getDataType();
+        if (dataType instanceof ByteType) {
+            return String.valueOf(literal.getValue());
+        } else if (dataType instanceof ShortType) {
+            return String.valueOf(literal.getValue());
+        } else if (dataType instanceof IntegerType) {
+            return String.valueOf(literal.getValue());
+        } else if (dataType instanceof LongType) {
+            return String.valueOf(literal.getValue());
+        } else if (dataType instanceof FloatType) {
+            return String.valueOf(literal.getValue());
+        } else if (dataType instanceof DoubleType) {
+            return String.valueOf(literal.getValue());
+        } else if (dataType instanceof BooleanType) {
+            return String.valueOf(literal.getValue());
+        } else if (dataType instanceof StringType) {
+            return (String) literal.getValue();
+        } else if (dataType instanceof DateType) {
+            int daysSinceEpoch = InternalUtils.daysSinceEpoch((Date) literal.getValue());
+            throw new UnsupportedOperationException("NYI");
+        } else if (dataType instanceof TimestampType) {
+            throw new UnsupportedOperationException("NYI");
+        } else if (dataType instanceof DecimalType) {
+            throw new UnsupportedOperationException("NYI");
+        } else if (dataType instanceof BinaryType) {
+            throw new UnsupportedOperationException("NYI");
+        }
+        throw new UnsupportedOperationException("Unsupported partition column type: " + dataType);
     }
 
     /**
@@ -262,7 +322,7 @@ public class PartitionUtils {
         return false;
     }
 
-    private static Predicate combineWithAndOp(Predicate left, Predicate right) {
+    public static Predicate combineWithAndOp(Predicate left, Predicate right) {
         String leftName = left.getName().toUpperCase();
         String rightName = right.getName().toUpperCase();
         if (leftName.equals("ALWAYS_FALSE") || rightName.equals("ALWAYS_FALSE")) {

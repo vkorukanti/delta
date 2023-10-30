@@ -71,6 +71,74 @@ public final class VectorUtils {
         return values;
     }
 
+    public static ArrayValue stringArrayValue(List<String> values) {
+        return new ArrayValue() {
+            @Override
+            public int getSize() {
+                return values.size();
+            }
+
+            @Override
+            public ColumnVector getElements() {
+                return stringVector(values);
+            }
+        };
+    }
+
+    public static MapValue stringStringMapValue(Map<String, String> keyValues) {
+        List<String> keys = new ArrayList<>();
+        List<String> values = new ArrayList<>();
+        for (Map.Entry<String, String> entry : keyValues.entrySet()) {
+            keys.add(entry.getKey());
+            values.add(entry.getValue());
+        }
+        return new MapValue() {
+            @Override
+            public int getSize() {
+                return values.size();
+            }
+
+            @Override
+            public ColumnVector getKeys() {
+                return stringVector(keys);
+            }
+
+            @Override
+            public ColumnVector getValues() {
+                return stringVector(values);
+            }
+        };
+    }
+
+    public static ColumnVector stringVector(List<String> values) {
+        return new ColumnVector() {
+            @Override
+            public DataType getDataType() {
+                return StringType.STRING;
+            }
+
+            @Override
+            public int getSize() {
+                return values.size();
+            }
+
+            @Override
+            public void close() {
+                // no-op
+            }
+
+            @Override
+            public boolean isNullAt(int rowId) {
+                return values.get(rowId) == null;
+            }
+
+            @Override
+            public String getString(int rowId) {
+                return values.get(rowId);
+            }
+        };
+    }
+
     /**
      * Gets the value at {@code rowId} from the column vector. The type of the Object returned
      * depends on the data type of the column vector. For complex types array and map, returns
@@ -110,6 +178,49 @@ public final class VectorUtils {
             return toJavaList(columnVector.getArray(rowId));
         } else if (dataType instanceof MapType) {
             return toJavaMap(columnVector.getMap(rowId));
+        } else {
+            throw new UnsupportedOperationException("unsupported data type");
+        }
+    }
+
+    /**
+     * Gets the value at {@code rowId} from the column vector. The type of the Object returned
+     * depends on the data type of the column vector. For complex types array and map, returns
+     * the value as Java list or Java map. For struct type, returns an {@link Row}.
+     */
+    public static Object getValueAsObject(
+        Row row, int columnOrdinal, DataType dataType) {
+        if (row.isNullAt(columnOrdinal)) {
+            return null;
+        } else if (dataType instanceof BooleanType) {
+            return row.getBoolean(columnOrdinal);
+        } else if (dataType instanceof ByteType) {
+            return row.getByte(columnOrdinal);
+        } else if (dataType instanceof ShortType) {
+            return row.getShort(columnOrdinal);
+        } else if (dataType instanceof IntegerType || dataType instanceof DateType) {
+            // DateType data is stored internally as the number of days since 1970-01-01
+            return row.getInt(columnOrdinal);
+        } else if (dataType instanceof LongType || dataType instanceof TimestampType) {
+            // TimestampType data is stored internally as the number of microseconds since the unix
+            // epoch
+            return row.getLong(columnOrdinal);
+        } else if (dataType instanceof FloatType) {
+            return row.getFloat(columnOrdinal);
+        } else if (dataType instanceof DoubleType) {
+            return row.getDouble(columnOrdinal);
+        } else if (dataType instanceof StringType) {
+            return row.getString(columnOrdinal);
+        } else if (dataType instanceof BinaryType) {
+            return row.getBinary(columnOrdinal);
+        } else if (dataType instanceof StructType) {
+            return row.getStruct(columnOrdinal);
+        } else if (dataType instanceof DecimalType) {
+            return row.getDecimal(columnOrdinal);
+        } else if (dataType instanceof ArrayType) {
+            return toJavaList(row.getArray(columnOrdinal));
+        } else if (dataType instanceof MapType) {
+            return toJavaMap(row.getMap(columnOrdinal));
         } else {
             throw new UnsupportedOperationException("unsupported data type");
         }

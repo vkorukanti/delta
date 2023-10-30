@@ -38,6 +38,7 @@ import io.delta.kernel.internal.*;
 import io.delta.kernel.internal.checkpoints.*;
 import io.delta.kernel.internal.fs.Path;
 import io.delta.kernel.internal.lang.ListUtils;
+import io.delta.kernel.internal.replay.LogReplay;
 import io.delta.kernel.internal.util.FileNames;
 import io.delta.kernel.internal.util.Tuple2;
 import static io.delta.kernel.internal.checkpoints.Checkpointer.findLastCompleteCheckpointBefore;
@@ -322,16 +323,23 @@ public class SnapshotManager {
             .orElse(".");
         logger.info("{}: Loading version {} {}", tablePath, initSegment.version, startingFromStr);
 
+
+        LogReplay logReplay =  new LogReplay(
+                logPath,
+                tablePath,
+                initSegment.version,
+                tableClient,
+                initSegment,
+                Optional.ofNullable(latestSnapshotHint.get()));
+
         long startTimeMillis = System.currentTimeMillis();
         final SnapshotImpl snapshot = new SnapshotImpl(
-            logPath,
-            tablePath,
-            initSegment.version,
-            initSegment,
-            tableClient,
-            initSegment.lastCommitTimestamp,
-            Optional.ofNullable(latestSnapshotHint.get())
-        );
+                logPath,
+                tablePath,
+                initSegment.version,
+                logReplay,
+                logReplay.getProtocol(),
+                logReplay.getMetadata());
         logger.info(
                 "{}: Took {}ms to construct the snapshot (loading protocol and metadata) for {} {}",
                 tablePath,

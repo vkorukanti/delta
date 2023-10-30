@@ -15,12 +15,15 @@
  */
 package io.delta.kernel.internal.actions;
 
-import java.util.Optional;
+import java.util.*;
 
 import io.delta.kernel.data.ColumnVector;
+import io.delta.kernel.data.Row;
 import io.delta.kernel.types.LongType;
 import io.delta.kernel.types.StringType;
 import io.delta.kernel.types.StructType;
+
+import io.delta.kernel.internal.data.GenericRow;
 
 /**
  * Delta log action representing a transaction identifier action.
@@ -40,6 +43,15 @@ public class SetTransaction {
             vector.getChild(1).getLong(rowId),
             vector.getChild(2).isNullAt(rowId) ?
                 Optional.empty() : Optional.of(vector.getChild(2).getLong(rowId)));
+    }
+
+    public static Row toRow(SetTransaction setTransaction) {
+        Map<Integer, Object> setTransactionMap = new HashMap<>();
+        setTransactionMap.put(0, setTransaction.getAppId());
+        setTransactionMap.put(1, setTransaction.getVersion());
+        setTransactionMap.put(2, setTransaction.getLastUpdated().orElse(null));
+
+        return new GenericRow(SetTransaction.READ_SCHEMA, setTransactionMap);
     }
 
     private final String appId;
