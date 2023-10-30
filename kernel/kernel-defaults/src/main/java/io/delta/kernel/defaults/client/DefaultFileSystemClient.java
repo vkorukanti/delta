@@ -29,6 +29,7 @@ import org.apache.hadoop.fs.Path;
 
 import io.delta.kernel.client.FileReadRequest;
 import io.delta.kernel.client.FileSystemClient;
+import io.delta.kernel.client.FileWriteRequest;
 import io.delta.kernel.utils.CloseableIterator;
 import io.delta.kernel.utils.FileStatus;
 
@@ -80,10 +81,22 @@ public class DefaultFileSystemClient
     }
 
     @Override
+    public void mkdir(String path) throws IOException {
+        Path pathObject = new Path(path);
+        FileSystem fs = pathObject.getFileSystem(hadoopConf);
+        fs.mkdirs(pathObject);
+    }
+
+    @Override
     public CloseableIterator<ByteArrayInputStream> readFiles(
         CloseableIterator<FileReadRequest> readRequests) {
         return readRequests.map(elem ->
                 getStream(elem.getPath(), elem.getStartOffset(), elem.getReadLength()));
+    }
+
+    @Override
+    public void writeFiles(CloseableIterator<FileWriteRequest> writeRequests) {
+        throw new UnsupportedOperationException("Not implemented yet");
     }
 
     private ByteArrayInputStream getStream(String filePath, int offset, int size) {

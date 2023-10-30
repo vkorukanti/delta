@@ -16,9 +16,7 @@
 
 package io.delta.kernel.client;
 
-import java.io.ByteArrayInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
+import java.io.*;
 
 import io.delta.kernel.annotation.Evolving;
 import io.delta.kernel.utils.CloseableIterator;
@@ -56,6 +54,14 @@ public interface FileSystemClient {
     String resolvePath(String path) throws IOException;
 
     /**
+     * Create a directory at the given path.
+     *
+     * @param path Path to create.
+     * @throws IOException for any IO error.
+     */
+    void mkdir(String path) throws IOException;
+
+    /**
      * Return an iterator of byte streams one for each read request in {@code readRequests}. The
      * returned streams are in the same order as the given {@link FileReadRequest}s.
      * It is the responsibility of the caller to close each returned stream.
@@ -67,4 +73,14 @@ public interface FileSystemClient {
     CloseableIterator<ByteArrayInputStream> readFiles(
         CloseableIterator<FileReadRequest> readRequests)
         throws IOException;
+
+
+    /**
+     * Write the given iterator of {@link FileWriteRequest} as files.
+     * Each {@link FileWriteRequest} corresponds to one output file.
+     *
+     * Throws if a file already exists. A failure could leave the files that are
+     * already written as is. It is the responsibility of the caller to clean them up.
+     */
+    void writeFiles(CloseableIterator<FileWriteRequest> writeRequests);
 }

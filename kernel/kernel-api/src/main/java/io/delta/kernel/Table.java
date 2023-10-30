@@ -49,4 +49,28 @@ public interface Table {
      */
     Snapshot getLatestSnapshot(TableClient tableClient)
         throws TableNotFoundException;
+
+    /**
+     * Create a {@link TransactionBuilder} which can create a {@link Transaction} object
+     * to mutate the table.
+     *
+     * @param tableClient
+     * @param engineInfo
+     * @param operation
+     * @return
+     */
+    TransactionBuilder createTransactionBuilder(
+        TableClient tableClient,
+        String engineInfo,
+        String operation);
+
+    /**
+     * Checkpoint the table at given version. It writes a single checkpoint file.
+     *
+     * @param tableClient
+     * @param version Version to checkpoint.
+     * @throws CheckpointAlreadyExistsException
+     */
+    void checkpoint(TableClient tableClient, long version)
+        throws CheckpointAlreadyExistsException;
 }

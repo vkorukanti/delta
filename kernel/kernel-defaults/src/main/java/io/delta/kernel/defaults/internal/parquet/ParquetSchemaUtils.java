@@ -15,14 +15,13 @@
  */
 package io.delta.kernel.defaults.internal.parquet;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.stream.Collectors;
 
-import org.apache.parquet.schema.GroupType;
-import org.apache.parquet.schema.MessageType;
-import org.apache.parquet.schema.Type;
+import org.apache.parquet.schema.*;
+import static org.apache.parquet.schema.PrimitiveType.PrimitiveTypeName.INT32;
+import static org.apache.parquet.schema.Type.Repetition.OPTIONAL;
+import static org.apache.parquet.schema.Type.Repetition.REQUIRED;
 
 import io.delta.kernel.types.*;
 
@@ -102,6 +101,32 @@ class ParquetSchemaUtils {
                         throw new IllegalStateException(String.format("Parquet file contains " +
                             "multiple columns (%s, %s) with the same field id", u, v));
                     }));
+    }
+
+    /**
+     * Convert the given Kernel schema to Parquet's schema
+     * @param structType Kernel schema object
+     * @return {@link MessageType} representing the schema in Parquet format.
+     */
+    public static MessageType toParquetSchema(StructType structType) {
+        List<Type> types = new ArrayList<>();
+        for (StructField structField : structType.fields()) {
+            types.add(toParquetType(structField));
+        }
+        return new MessageType("fileSchema", types);
+    }
+
+    private static Type toParquetType(StructField structField) {
+        DataType dataType = structField.getDataType();
+        // TODO: need to handle the nested types.
+        Type.Repetition repetition = structField.isNullable() ? OPTIONAL : REQUIRED;
+        if (dataType instanceof IntegerType) {
+            return new PrimitiveType(repetition, INT32, structField.getName());
+        }
+        // TODO: handle field ids
+        // TODO: handle rest of the types.
+        throw new UnsupportedOperationException(
+            "Writing given type data to Parquet is not supported: " + structField.getDataType());
     }
 
     private static List<Type> pruneFields(

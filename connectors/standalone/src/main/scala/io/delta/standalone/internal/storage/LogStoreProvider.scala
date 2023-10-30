@@ -26,9 +26,9 @@ import io.delta.standalone.exceptions.DeltaStandaloneException
 import io.delta.standalone.internal.exception.DeltaErrors
 import io.delta.standalone.internal.sources.StandaloneHadoopConf
 
-private[internal] object LogStoreProvider extends LogStoreProvider
+object LogStoreProvider extends LogStoreProvider
 
-private[internal] trait LogStoreProvider {
+trait LogStoreProvider {
 
   // We accept keys with the `spark.` prefix to maintain compatibility with delta-spark
   val acceptedLogStoreClassConfKeyRegex =

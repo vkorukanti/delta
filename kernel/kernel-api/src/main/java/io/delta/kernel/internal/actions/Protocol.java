@@ -15,16 +15,18 @@
  */
 package io.delta.kernel.internal.actions;
 
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 
 import io.delta.kernel.data.ColumnVector;
+import io.delta.kernel.data.Row;
 import io.delta.kernel.types.ArrayType;
 import io.delta.kernel.types.IntegerType;
 import io.delta.kernel.types.StringType;
 import io.delta.kernel.types.StructType;
 
+import io.delta.kernel.internal.data.GenericRow;
 import io.delta.kernel.internal.util.VectorUtils;
+import static io.delta.kernel.internal.util.VectorUtils.stringArrayValue;
 
 public class Protocol {
 
@@ -43,11 +45,23 @@ public class Protocol {
         );
     }
 
+    public static Row toRow(Protocol protocol) {
+        Map<Integer, Object> protocolMap = new HashMap<>();
+        protocolMap.put(0, protocol.getMinReaderVersion());
+        protocolMap.put(1, protocol.getMinWriterVersion());
+        protocolMap.put(2, protocol.getReaderFeatures() == null ?
+                null : stringArrayValue(protocol.getReaderFeatures()));
+        protocolMap.put(3, protocol.getWriterFeatures() == null ?
+                null : stringArrayValue(protocol.getWriterFeatures()));
+
+        return new GenericRow(Protocol.READ_SCHEMA, protocolMap);
+    }
+
     public static final StructType READ_SCHEMA = new StructType()
         .add("minReaderVersion", IntegerType.INTEGER, false /* nullable */)
         .add("minWriterVersion", IntegerType.INTEGER, false /* nullable */)
-        .add("readerFeatures", new ArrayType(StringType.STRING, false /* contains null */))
-        .add("writerFeatures", new ArrayType(StringType.STRING, false /* contains null */));
+        .add("readerFeatures", new ArrayType(StringType.STRING, true /* contains null */))
+        .add("writerFeatures", new ArrayType(StringType.STRING, true /* contains null */));
 
     private final int minReaderVersion;
     private final int minWriterVersion;

@@ -15,14 +15,15 @@
  */
 package io.delta.kernel.internal.actions;
 
-import java.util.Collections;
-import java.util.Map;
+import java.util.*;
 
 import io.delta.kernel.data.ColumnVector;
+import io.delta.kernel.data.Row;
 import io.delta.kernel.types.MapType;
 import io.delta.kernel.types.StringType;
 import io.delta.kernel.types.StructType;
 
+import io.delta.kernel.internal.data.GenericRow;
 import io.delta.kernel.internal.util.VectorUtils;
 import static io.delta.kernel.internal.util.InternalUtils.requireNonNull;
 
@@ -39,6 +40,14 @@ public class Format {
         return new Format(provider, options);
     }
 
+    public static Row toRow(Format format) {
+        Map<Integer, Object> formatMap = new HashMap<>();
+        formatMap.put(0, format.getProvider());
+        formatMap.put(1, VectorUtils.stringStringMapValue(format.getOptions()));
+
+        return new GenericRow(Format.READ_SCHEMA, formatMap);
+    }
+
     public static final StructType READ_SCHEMA = new StructType()
         .add("provider", StringType.STRING, false /* nullable */)
         .add("options",
@@ -52,6 +61,11 @@ public class Format {
     public Format(String provider, Map<String, String> options) {
         this.provider = provider;
         this.options = options;
+    }
+
+    public Format() {
+        this.provider = "parquet";
+        this.options = Collections.emptyMap();
     }
 
     public String getProvider() {

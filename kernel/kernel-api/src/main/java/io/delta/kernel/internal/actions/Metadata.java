@@ -20,11 +20,10 @@ import java.util.stream.Collectors;
 import static java.util.Objects.requireNonNull;
 
 import io.delta.kernel.client.TableClient;
-import io.delta.kernel.data.ArrayValue;
-import io.delta.kernel.data.ColumnVector;
-import io.delta.kernel.data.MapValue;
+import io.delta.kernel.data.*;
 import io.delta.kernel.types.*;
 
+import io.delta.kernel.internal.data.GenericRow;
 import io.delta.kernel.internal.lang.Lazy;
 import io.delta.kernel.internal.util.VectorUtils;
 import static io.delta.kernel.internal.util.InternalUtils.requireNonNull;
@@ -56,6 +55,20 @@ public class Metadata {
                 vector.getChild(6).getLong(rowId)),
             vector.getChild(7).getMap(rowId)
         );
+    }
+
+    public static Row toRow(Metadata metadata) {
+        Map<Integer, Object> metadataMap = new HashMap<>();
+        metadataMap.put(0, metadata.getId());
+        metadataMap.put(1, metadata.getName().orElse(null));
+        metadataMap.put(2, metadata.getDescription().orElse(null));
+        metadataMap.put(3, Format.toRow(metadata.getFormat()));
+        metadataMap.put(4, metadata.getSchemaString());
+        metadataMap.put(5, metadata.getPartitionColumns());
+        metadataMap.put(6, metadata.getCreatedTime().orElse(null));
+        metadataMap.put(7, metadata.getConfigurationMapValue());
+
+        return new GenericRow(Metadata.READ_SCHEMA, metadataMap);
     }
 
     public static final StructType READ_SCHEMA = new StructType()

@@ -20,7 +20,7 @@ import java.io.IOException;
 import java.util.Optional;
 
 import io.delta.kernel.annotation.Evolving;
-import io.delta.kernel.data.ColumnarBatch;
+import io.delta.kernel.data.*;
 import io.delta.kernel.expressions.Predicate;
 import io.delta.kernel.types.StructField;
 import io.delta.kernel.types.StructType;
@@ -62,7 +62,45 @@ public interface ParquetHandler {
      * @throws IOException if an I/O error occurs during the read.
      */
     CloseableIterator<ColumnarBatch> readParquetFiles(
-        CloseableIterator<FileStatus> fileIter,
-        StructType physicalSchema,
-        Optional<Predicate> predicate) throws IOException;
+            CloseableIterator<FileStatus> fileIter,
+            StructType physicalSchema,
+            Optional<Predicate> predicate) throws IOException;
+
+    /**
+     * Write the given data batches to a Parquet files. Try to keep the Parquet
+     * file size to given size. If the current file exceeds this size,
+     * create a new Parquet file.
+     * <p>
+     *
+     * @param directoryPath     Path to the directory where the Parquet files will be written.
+     * @param dataIter          Iterator of data batches to write.
+     * @param maxFileSize      Maximum size of the created Parquet file in bytes.
+     * @param statisticsSchema Schema of the columns to collect statistics for. This is a subset of
+     *                         the schema of the data that is being written. The schema is used to
+     *                         to collect statistics for each Parquet file.
+     * @return an iterator of {@link Row}s containing the metadata of the written Parquet files.
+     * For each written Parquet file a row is returned that contains the following schema
+     *
+     * (
+     *   path: String,
+     *   size: Long,
+     *   modificationTime: Long,
+     *   stats: StructType
+     *      - numRecords: Long // number of records in the file
+     *      // Min values of the columns in the file. THe columns to collect stats is defined
+     *      // by the `statisticsSchema` parameter. Only the leaf-level columns have the stats.
+     *      - minValues: StructType
+     *      // Max values of the columns in the file. THe columns to collect stats is defined
+     *      // by the `statisticsSchema` parameter. Only the leaf-level columns have the stats.
+     *      - maxValues: StructType
+     *      // Null count of columns in the file. THe columns to collect stats is defined
+     *      // by the `statisticsSchema` parameter. Only the leaf-level columns have the stats.
+     *      - nullCount: StructType
+     * )
+     */
+    CloseableIterator<Row> writeParquetFiles(
+            String directoryPath,
+            CloseableIterator<FilteredColumnarBatch> dataIter,
+            long maxFileSize,
+            StructType statisticsSchema) throws IOException;
 }

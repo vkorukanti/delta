@@ -42,7 +42,7 @@ class DelegatingLogStore(hadoopConf: Configuration)
   private lazy val defaultLogStore = createLogStore(DelegatingLogStore.defaultHDFSLogStoreClassName)
 
   // Creates a LogStore with given LogStore class name.
-  private def createLogStore(className: String): LogStore = {
+    def createLogStore(className: String): LogStore = {
     LogStoreProvider.createLogStoreWithClassName(className, hadoopConf)
   }
 

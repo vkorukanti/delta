@@ -31,7 +31,7 @@ import io.delta.kernel.data.Row;
 import io.delta.kernel.types.*;
 import io.delta.kernel.utils.CloseableIterator;
 import io.delta.kernel.utils.FileStatus;
-
+import io.delta.kernel.internal.actions.AddFile;
 import io.delta.kernel.internal.util.VectorUtils;
 import static io.delta.kernel.internal.util.InternalUtils.singletonStringColumnVector;
 
@@ -207,8 +207,23 @@ public class TestDefaultJsonHandler {
         }
     }
 
+    @Test
+    public void writeJsonFileAtomically() throws Exception {
+        JsonHandler jsonHandler = new DefaultJsonHandler(new Configuration());
+        CloseableIterator<ColumnarBatch> data =
+            jsonHandler.readJsonFiles(testFiles(), AddFile.SCHEMA_WITH_STATS, Optional.empty());
+
+        while (data.hasNext()) {
+            ColumnarBatch batch = data.next();
+            jsonHandler.writeJsonFileAtomically(
+                String.format("/tmp/test-%s.json", UUID.randomUUID()),
+                batch.getRows()
+            );
+        }
+    }
+
     private static CloseableIterator<FileStatus> testFiles()
-            throws Exception {
+        throws Exception {
         String listFrom = DefaultKernelTestUtils.getTestResourceFilePath("json-files/1.json");
         return FS_CLIENT.listFrom(listFrom);
     }

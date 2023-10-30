@@ -767,9 +767,16 @@ object SnapshotManagerSuite {
         throw new UnsupportedOperationException("not supported for SnapshotManagerSuite tests")
       }
 
+      override def mkdir(path: String): Unit =
+        throw new UnsupportedOperationException("not supported for SnapshotManagerSuite tests")
+
       override def readFiles(
           readRequests: CloseableIterator[FileReadRequest]
       ): CloseableIterator[ByteArrayInputStream] = {
+        throw new UnsupportedOperationException("not supported for SnapshotManagerSuite tests")
+      }
+
+      override def writeFiles(writeRequests: CloseableIterator[FileWriteRequest]): Unit = {
         throw new UnsupportedOperationException("not supported for SnapshotManagerSuite tests")
       }
     }

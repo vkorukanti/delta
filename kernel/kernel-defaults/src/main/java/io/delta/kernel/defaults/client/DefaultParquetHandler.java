@@ -19,9 +19,10 @@ import java.io.IOException;
 import java.util.Optional;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
 
 import io.delta.kernel.client.ParquetHandler;
-import io.delta.kernel.data.ColumnarBatch;
+import io.delta.kernel.data.*;
 import io.delta.kernel.expressions.Predicate;
 import io.delta.kernel.types.StructType;
 import io.delta.kernel.utils.CloseableIterator;
@@ -30,6 +31,7 @@ import io.delta.kernel.utils.FileStatus;
 import io.delta.kernel.internal.util.Utils;
 
 import io.delta.kernel.defaults.internal.parquet.ParquetBatchReader;
+import io.delta.kernel.defaults.internal.parquet.ParquetBatchWriter;
 
 /**
  * Default implementation of {@link ParquetHandler} based on Hadoop APIs.
@@ -86,5 +88,16 @@ public class DefaultParquetHandler implements ParquetHandler {
                 return currentFileReader.next();
             }
         };
+    }
+
+    @Override
+    public CloseableIterator<Row> writeParquetFiles(
+            String directoryPath,
+            CloseableIterator<FilteredColumnarBatch> dataIter,
+            long maxFileSize,
+            StructType statsSchema) throws IOException {
+        ParquetBatchWriter batchWriter =
+            new ParquetBatchWriter(hadoopConf, new Path(directoryPath), maxFileSize, statsSchema);
+        return batchWriter.write(dataIter);
     }
 }

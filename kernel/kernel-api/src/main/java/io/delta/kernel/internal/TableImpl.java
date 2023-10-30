@@ -21,6 +21,7 @@ import java.io.IOException;
 import io.delta.kernel.Snapshot;
 import io.delta.kernel.Table;
 import io.delta.kernel.TableNotFoundException;
+import io.delta.kernel.TransactionBuilder;
 import io.delta.kernel.client.TableClient;
 
 import io.delta.kernel.internal.fs.Path;
@@ -57,5 +58,26 @@ public class TableImpl implements Table {
     @Override
     public Snapshot getLatestSnapshot(TableClient tableClient) throws TableNotFoundException {
         return snapshotManager.buildLatestSnapshot(tableClient, logPath, dataPath);
+    }
+
+    @Override
+    public TransactionBuilder createTransactionBuilder(
+        TableClient tableClient,
+        String engineInfo,
+        String operation) {
+        return new TransactionBuilderImpl(this, engineInfo, operation);
+    }
+
+    @Override
+    public void checkpoint(TableClient tableClient, long version) {
+        throw new UnsupportedOperationException("NYI");
+    }
+
+    protected Path getLogPath() {
+        return logPath;
+    }
+
+    protected Path getDataPath() {
+        return dataPath;
     }
 }
