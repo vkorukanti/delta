@@ -1,0 +1,8 @@
+name,iteration,durationMs
+sql-test,1,4374
+db-list-test,1,775
+db-create-test,1,5101
+db-use-test,1,64
+table-drop-test,1,96
+table-create-test,1,27050
+table-query-test,1,5617

@@ -1,0 +1,139 @@
+:: loading settings :: url = jar:file:/usr/lib/spark/jars/ivy-2.5.0.jar!/org/apache/ivy/core/settings/ivysettings.xml
+Ivy Default Cache set to: /home/hadoop/.ivy2/cache
+The jars for the packages stored in: /home/hadoop/.ivy2/jars
+io.delta#delta-core_2.12 added as a dependency
+io.delta#delta-contribs_2.12 added as a dependency
+io.delta#delta-hive_2.12 added as a dependency
+:: resolving dependencies :: org.apache.spark#spark-submit-parent-40a3e984-e026-46ef-86fb-1e3f42a3eef1;1.0
+	confs: [default]
+	found io.delta#delta-contribs_2.12;3.1.0-SNAPSHOT in local-ivy-cache
+	found io.delta#delta-spark_2.12;3.1.0-SNAPSHOT in local-ivy-cache
+	found io.delta#delta-storage;3.1.0-SNAPSHOT in local-ivy-cache
+	found org.antlr#antlr4-runtime;4.9.3 in central
+	found io.delta#delta-hive_2.12;0.2.0 in central
+	found io.delta#delta-standalone_2.12;0.2.0 in central
+	found com.github.mjakubowski84#parquet4s-core_2.12;1.2.1 in central
+	found com.chuusai#shapeless_2.12;2.3.3 in central
+	found org.typelevel#macro-compat_2.12;1.1.1 in central
+	found org.scala-lang.modules#scala-collection-compat_2.12;2.1.6 in central
+	found com.fasterxml.jackson.module#jackson-module-scala_2.12;2.6.7.1 in central
+	found org.scala-lang#scala-reflect;2.12.1 in central
+	found com.fasterxml.jackson.core#jackson-core;2.6.7 in central
+	found com.fasterxml.jackson.core#jackson-annotations;2.6.7 in central
+	found com.fasterxml.jackson.core#jackson-databind;2.6.7 in central
+	found com.fasterxml.jackson.module#jackson-module-paranamer;2.7.9 in central
+	found com.thoughtworks.paranamer#paranamer;2.8 in central
+	found org.json4s#json4s-jackson_2.12;3.5.3 in central
+	found org.json4s#json4s-core_2.12;3.5.3 in central
+	found org.json4s#json4s-ast_2.12;3.5.3 in central
+	found org.json4s#json4s-scalap_2.12;3.5.3 in central
+	found org.scala-lang.modules#scala-xml_2.12;1.0.6 in central
+	found com.fasterxml.jackson.core#jackson-databind;2.8.4 in central
+	found com.fasterxml.jackson.core#jackson-annotations;2.8.0 in central
+	found com.fasterxml.jackson.core#jackson-core;2.8.4 in central
+downloading /home/hadoop/.ivy2/local/io.delta/delta-contribs_2.12/3.1.0-SNAPSHOT/jars/delta-contribs_2.12.jar ...
+	[SUCCESSFUL ] io.delta#delta-contribs_2.12;3.1.0-SNAPSHOT!delta-contribs_2.12.jar (1ms)
+downloading https://repo1.maven.org/maven2/io/delta/delta-hive_2.12/0.2.0/delta-hive_2.12-0.2.0.jar ...
+	[SUCCESSFUL ] io.delta#delta-hive_2.12;0.2.0!delta-hive_2.12.jar (25ms)
+downloading /home/hadoop/.ivy2/local/io.delta/delta-spark_2.12/3.1.0-SNAPSHOT/jars/delta-spark_2.12.jar ...
+	[SUCCESSFUL ] io.delta#delta-spark_2.12;3.1.0-SNAPSHOT!delta-spark_2.12.jar (6ms)
+downloading /home/hadoop/.ivy2/local/io.delta/delta-storage/3.1.0-SNAPSHOT/jars/delta-storage.jar ...
+	[SUCCESSFUL ] io.delta#delta-storage;3.1.0-SNAPSHOT!delta-storage.jar (1ms)
+downloading https://repo1.maven.org/maven2/io/delta/delta-standalone_2.12/0.2.0/delta-standalone_2.12-0.2.0.jar ...
+	[SUCCESSFUL ] io.delta#delta-standalone_2.12;0.2.0!delta-standalone_2.12.jar (32ms)
+:: resolution report :: resolve 3248ms :: artifacts dl 90ms
+	:: modules in use:
+	com.chuusai#shapeless_2.12;2.3.3 from central in [default]
+	com.fasterxml.jackson.core#jackson-annotations;2.8.0 from central in [default]
+	com.fasterxml.jackson.core#jackson-core;2.8.4 from central in [default]
+	com.fasterxml.jackson.core#jackson-databind;2.8.4 from central in [default]
+	com.fasterxml.jackson.module#jackson-module-paranamer;2.7.9 from central in [default]
+	com.fasterxml.jackson.module#jackson-module-scala_2.12;2.6.7.1 from central in [default]
+	com.github.mjakubowski84#parquet4s-core_2.12;1.2.1 from central in [default]
+	com.thoughtworks.paranamer#paranamer;2.8 from central in [default]
+	io.delta#delta-contribs_2.12;3.1.0-SNAPSHOT from local-ivy-cache in [default]
+	io.delta#delta-hive_2.12;0.2.0 from central in [default]
+	io.delta#delta-spark_2.12;3.1.0-SNAPSHOT from local-ivy-cache in [default]
+	io.delta#delta-standalone_2.12;0.2.0 from central in [default]
+	io.delta#delta-storage;3.1.0-SNAPSHOT from local-ivy-cache in [default]
+	org.antlr#antlr4-runtime;4.9.3 from central in [default]
+	org.json4s#json4s-ast_2.12;3.5.3 from central in [default]
+	org.json4s#json4s-core_2.12;3.5.3 from central in [default]
+	org.json4s#json4s-jackson_2.12;3.5.3 from central in [default]
+	org.json4s#json4s-scalap_2.12;3.5.3 from central in [default]
+	org.scala-lang#scala-reflect;2.12.1 from central in [default]
+	org.scala-lang.modules#scala-collection-compat_2.12;2.1.6 from central in [default]
+	org.scala-lang.modules#scala-xml_2.12;1.0.6 from central in [default]
+	org.typelevel#macro-compat_2.12;1.1.1 from central in [default]
+	:: evicted modules:
+	com.fasterxml.jackson.core#jackson-core;2.6.7 by [com.fasterxml.jackson.core#jackson-core;2.8.4] in [default]
+	com.fasterxml.jackson.core#jackson-annotations;2.6.7 by [com.fasterxml.jackson.core#jackson-annotations;2.8.0] in [default]
+	com.fasterxml.jackson.core#jackson-databind;2.6.7 by [com.fasterxml.jackson.core#jackson-databind;2.8.4] in [default]
+	com.fasterxml.jackson.core#jackson-annotations;2.6.0 by [com.fasterxml.jackson.core#jackson-annotations;2.6.7] in [default]
+	---------------------------------------------------------------------
+	|                  |            modules            ||   artifacts   |
+	|       conf       | number| search|dwnlded|evicted|| number|dwnlded|
+	---------------------------------------------------------------------
+	|      default     |   27  |   5   |   5   |   4   ||   22  |   5   |
+	---------------------------------------------------------------------
+
+:: problems summary ::
+:::: WARNINGS
+		module not found: io.delta#delta-core_2.12;3.1.0-SNAPSHOT
+
+	==== local-m2-cache: tried
+
+	  file:/home/hadoop/.m2/repository/io/delta/delta-core_2.12/3.1.0-SNAPSHOT/delta-core_2.12-3.1.0-SNAPSHOT.pom
+
+	  -- artifact io.delta#delta-core_2.12;3.1.0-SNAPSHOT!delta-core_2.12.jar:
+
+	  file:/home/hadoop/.m2/repository/io/delta/delta-core_2.12/3.1.0-SNAPSHOT/delta-core_2.12-3.1.0-SNAPSHOT.jar
+
+	==== local-ivy-cache: tried
+
+	  /home/hadoop/.ivy2/local/io.delta/delta-core_2.12/3.1.0-SNAPSHOT/ivys/ivy.xml
+
+	  -- artifact io.delta#delta-core_2.12;3.1.0-SNAPSHOT!delta-core_2.12.jar:
+
+	  /home/hadoop/.ivy2/local/io.delta/delta-core_2.12/3.1.0-SNAPSHOT/jars/delta-core_2.12.jar
+
+	==== central: tried
+
+	  https://repo1.maven.org/maven2/io/delta/delta-core_2.12/3.1.0-SNAPSHOT/delta-core_2.12-3.1.0-SNAPSHOT.pom
+
+	  -- artifact io.delta#delta-core_2.12;3.1.0-SNAPSHOT!delta-core_2.12.jar:
+
+	  https://repo1.maven.org/maven2/io/delta/delta-core_2.12/3.1.0-SNAPSHOT/delta-core_2.12-3.1.0-SNAPSHOT.jar
+
+	==== spark-packages: tried
+
+	  https://repos.spark-packages.org/io/delta/delta-core_2.12/3.1.0-SNAPSHOT/delta-core_2.12-3.1.0-SNAPSHOT.pom
+
+	  -- artifact io.delta#delta-core_2.12;3.1.0-SNAPSHOT!delta-core_2.12.jar:
+
+	  https://repos.spark-packages.org/io/delta/delta-core_2.12/3.1.0-SNAPSHOT/delta-core_2.12-3.1.0-SNAPSHOT.jar
+
+		::::::::::::::::::::::::::::::::::::::::::::::
+
+		::          UNRESOLVED DEPENDENCIES         ::
+
+		::::::::::::::::::::::::::::::::::::::::::::::
+
+		:: io.delta#delta-core_2.12;3.1.0-SNAPSHOT: not found
+
+		::::::::::::::::::::::::::::::::::::::::::::::
+
+
+
+:: USE VERBOSE OR DEBUG MESSAGE LEVEL FOR MORE DETAILS
+Exception in thread "main" java.lang.RuntimeException: [unresolved dependency: io.delta#delta-core_2.12;3.1.0-SNAPSHOT: not found]
+	at org.apache.spark.deploy.SparkSubmitUtils$.resolveMavenCoordinates(SparkSubmit.scala:1505)
+	at org.apache.spark.util.DependencyUtils$.resolveMavenDependencies(DependencyUtils.scala:185)
+	at org.apache.spark.deploy.SparkSubmit.prepareSubmitEnvironment(SparkSubmit.scala:311)
+	at org.apache.spark.deploy.SparkSubmit.org$apache$spark$deploy$SparkSubmit$$runMain(SparkSubmit.scala:949)
+	at org.apache.spark.deploy.SparkSubmit.doRunMain$1(SparkSubmit.scala:180)
+	at org.apache.spark.deploy.SparkSubmit.submit(SparkSubmit.scala:203)
+	at org.apache.spark.deploy.SparkSubmit.doSubmit(SparkSubmit.scala:90)
+	at org.apache.spark.deploy.SparkSubmit$$anon$2.doSubmit(SparkSubmit.scala:1095)
+	at org.apache.spark.deploy.SparkSubmit$.main(SparkSubmit.scala:1104)
+	at org.apache.spark.deploy.SparkSubmit.main(SparkSubmit.scala)

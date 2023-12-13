@@ -40,7 +40,7 @@ import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.expressions.{AttributeReference, Expression, FileSourceMetadataAttribute, GenericInternalRow}
 import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, Project}
 import org.apache.spark.sql.execution.datasources.{FileFormat, HadoopFsRelation, LogicalRelation}
-import org.apache.spark.sql.execution.datasources.FileFormat.{FILE_PATH, METADATA_NAME}
+import org.apache.spark.sql.execution.datasources.FileFormat.{FILE_PATH, METADATA_NAME, ROW_INDEX}
 import org.apache.spark.sql.functions.{col, lit}
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.util.{SerializableConfiguration, Utils => SparkUtils}
@@ -146,7 +146,7 @@ object DMLWithDeletionVectorsHelper extends DeltaCommand {
   /**
    * Finds the files in nameToAddFileMap in which rows were deleted by checking the row index set.
    */
-  private def findFilesWithMatchingRows(
+  def findFilesWithMatchingRows(
       txn: OptimisticTransaction,
       nameToAddFileMap: Map[String, AddFile],
       matchedFileRowIndexSets: Seq[DeletionVectorResult]): Seq[TouchedFileWithDV] = {
@@ -214,8 +214,11 @@ object DMLWithDeletionVectorsHelper extends DeltaCommand {
       addFilesWithNewDvs: Seq[AddFile],
       snapshot: Snapshot): Seq[AddFile] = {
     import org.apache.spark.sql.delta.implicits._
+
+    if (addFilesWithNewDvs.isEmpty) return Seq.empty
+
     val statsColName = snapshot.getBaseStatsColumnName
-    val selectionPathAndStatsCols = Seq(col("path"), col(statsColName))
+    val selectionPathAndStatsCols = Seq(col("path"), col("stats"))
     val addFilesWithNewDvsDf = addFilesWithNewDvs.toDF(spark)
 
     // These files originate from snapshot.filesForScan which resets column statistics.
@@ -360,7 +363,9 @@ object DeletionVectorBitmapGenerator {
       tableHasDVs: Boolean,
       targetDf: DataFrame,
       candidateFiles: Seq[AddFile],
-      condition: Expression)
+      condition: Expression,
+      fileNameColumnOpt: Option[Column] = None,
+      rowIndexColumnOpt: Option[Column] = None)
     : Seq[DeletionVectorResult] = {
     // If the metadata column is not canonicalized, we must canonicalize them before use.
     val targetDfWithMetadataColumn = if (sparkMetadataFilePathIsCanonicalized) {
@@ -377,7 +382,7 @@ object DeletionVectorBitmapGenerator {
       // Filter after getting input file name as the filter might introduce a join and we
       // cannot get input file name on join's output.
       .filter(new Column(condition))
-      .withColumn(ROW_INDEX_COL, col(ROW_INDEX_COLUMN_NAME))
+      .withColumn(ROW_INDEX_COL, col(s"${METADATA_NAME}.${ROW_INDEX}"))
 
     val df = if (tableHasDVs) {
       // When the table already has DVs, join the `matchedRowDf` above to attach for each matched
