@@ -211,35 +211,50 @@ class TightBoundsSuite
       }
   }
 
-  test("DML operations fetch stats on tables with partial stats") {
-    val targetDF = createTestDF(0, 200, 4)
-      .withColumn("v", col("id"))
-      .withColumn("partCol", (col("id") / lit(50)).cast("Int"))
+  test("OSS BUG") {
+    val formatName = "delta"
+    val sourceFormat = "parquet"
+    val sourceLocation = "/Users/andreas.chatzistergiou/delta/"
 
-    val conf = Seq(DeltaSQLConf.DELTA_COLLECT_STATS.key -> false.toString)
-    withTempDeltaTable(targetDF, Seq("partCol"), conf = conf) { (targetTable, targetLog) =>
-      val statsBeforeFirstDelete = getStatsInPartitionOrder(targetLog.update())
-      val expectedStatsBeforeFirstDelete = Seq(
-        Row(null, null, null, null, null), // File 1.
-        Row(null, null, null, null, null), // File 2.
-        Row(null, null, null, null, null), // File 3.
-        Row(null, null, null, null, null) // File 4.
-      )
-      assert(statsBeforeFirstDelete === expectedStatsBeforeFirstDelete)
+    // sql(s"DROP TABLE IF EXISTS store_sales_denorm_${formatName}")
+    sql(s"""
+      CREATE TABLE store_sales_denorm_${formatName}
+      USING ${formatName}
+      LOCATION 'store_sales_denorm'
+      PARTITIONED BY (ss_sold_date_sk)
+      AS SELECT * FROM `${sourceFormat}`.`${sourceLocation}store_sales_denorm_start`
+      """)
 
-      // This operation touches files 2 and 3. Files 1 and 4 should still have not stats.
-      targetTable().delete("id in (50, 100)")
 
-      // Expect the stats for every file that got a DV added to it with tightBounds = false
-      val statsAfterFirstDelete = getStatsInPartitionOrder(targetLog.update())
-      val expectedStatsAfterFirstDelete = Seq(
-        Row(null, null, null, null, null), // File 1.
-        Row(50, Row(50, 50), Row(99, 99), Row(0, 0), false), // File 2.
-        Row(50, Row(100, 100), Row(149, 149), Row(0, 0), false), // File 3.
-        Row(null, null, null, null, null) // File 4.
-      )
-      assert(statsAfterFirstDelete === expectedStatsAfterFirstDelete)
-    }
+    sql(s"""
+        MERGE INTO store_sales_denorm_${formatName} AS a
+        USING `${sourceFormat}`.`${sourceLocation}store_sales_denorm_delete_xsmall` AS b
+        ON a.ss_sold_date_sk = b.ss_sold_date_sk
+        AND a.ss_item_sk = b.ss_item_sk
+        AND a. ss_ticket_number = b. ss_ticket_number
+        WHEN MATCHED THEN DELETE
+      """)
+
+    sql(s"""
+      MERGE INTO store_sales_denorm_${formatName} AS a
+      USING `${sourceFormat}`.`${sourceLocation}store_sales_denorm_delete_small` AS b
+      ON a.ss_sold_date_sk = b.ss_sold_date_sk
+      AND a.ss_item_sk = b.ss_item_sk
+      AND a. ss_ticket_number = b. ss_ticket_number
+      WHEN MATCHED THEN DELETE
+      """)
+
+    sql(s"""
+      MERGE INTO store_sales_denorm_${formatName} AS a
+      USING `${sourceFormat}`.`${sourceLocation}store_sales_denorm_delete_medium` AS b
+      ON a.ss_sold_date_sk = b.ss_sold_date_sk
+      AND a.ss_item_sk = b.ss_item_sk
+      AND a. ss_ticket_number = b. ss_ticket_number
+      WHEN MATCHED THEN DELETE
+      """)
+
+    // val a = sql(q2).collect()
+    // val b = 1
   }
 }
 

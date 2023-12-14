@@ -382,7 +382,8 @@ object DeletionVectorBitmapGenerator {
       // Filter after getting input file name as the filter might introduce a join and we
       // cannot get input file name on join's output.
       .filter(new Column(condition))
-      .withColumn(ROW_INDEX_COL, col(s"${METADATA_NAME}.${ROW_INDEX}"))
+      .withColumn(ROW_INDEX_COL, col(ROW_INDEX_COLUMN_NAME))
+      // .withColumn(ROW_INDEX_COL, col(s"${METADATA_NAME}.${ROW_INDEX}"))
 
     val df = if (tableHasDVs) {
       // When the table already has DVs, join the `matchedRowDf` above to attach for each matched

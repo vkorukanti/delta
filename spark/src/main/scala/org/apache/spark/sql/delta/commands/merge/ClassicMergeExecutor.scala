@@ -23,6 +23,7 @@ import org.apache.spark.sql.delta.actions.{AddCDCFile, AddFile, FileAction}
 import org.apache.spark.sql.delta.commands.{DeletionVectorBitmapGenerator, DMLWithDeletionVectorsHelper, MergeIntoCommandBase}
 import org.apache.spark.sql.delta.commands.cdc.CDCReader.{CDC_TYPE_COLUMN_NAME, CDC_TYPE_NOT_CDC}
 import org.apache.spark.sql.delta.commands.merge.MergeOutputGeneration.{SOURCE_ROW_INDEX_COL, TARGET_ROW_INDEX_COL}
+import org.apache.spark.sql.delta.files.TahoeBatchFileIndex
 import org.apache.spark.sql.delta.util.SetAccumulator
 
 import org.apache.spark.sql.{Column, Dataset, SparkSession}
@@ -437,12 +438,27 @@ trait ClassicMergeExecutor extends MergeOutputGeneration {
     status = s"MERGE operation - Rewriting Deletion Vectors to ${filesToRewrite.size} files",
     sqlMetricName = "rewriteTimeMs") {
 
-    val targetPlan = buildTargetPlanWithFiles(
+    val fileIndex = new TahoeBatchFileIndex(
       spark,
-      deltaTxn,
+      "merge",
       filesToRewrite,
-      columnsToDrop = Nil)
-    val targetDF = Dataset.ofRows(spark, targetPlan)
+      deltaTxn.deltaLog,
+      deltaTxn.deltaLog.dataPath,
+      deltaTxn.snapshot)
+
+    val targetDF = DMLWithDeletionVectorsHelper.createTargetDfForScanningForMatches(
+      spark,
+      target,
+      fileIndex)
+
+    /*
+      val targetPlan = buildTargetPlanWithFiles(
+        spark,
+        deltaTxn,
+        filesToRewrite,
+        columnsToDrop = Nil)
+      val targetDF = Dataset.ofRows(spark, targetPlan)
+    */
 
     // For writing DVs we are only interesting in the target table. When there are no
     // notMatchedBySource clauses an inner join is sufficient. Otherwise, we need an rightOuter
@@ -459,7 +475,6 @@ trait ClassicMergeExecutor extends MergeOutputGeneration {
     val joinedDF = getSourceDF
       .withColumn(SOURCE_ROW_PRESENT_COL, Column(incrSourceRowCountExpr))
       .join(targetDF, Column(condition), joinType)
-
 
     val modifiedRowsFilter = generateFilterForModifiedAndNewRows(includeNotMatchedFilter = false)
     val matchedDVResult =
