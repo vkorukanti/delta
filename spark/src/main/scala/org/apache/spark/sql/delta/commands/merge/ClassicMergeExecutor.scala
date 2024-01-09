@@ -73,27 +73,26 @@ trait ClassicMergeExecutor extends MergeOutputGeneration {
   protected def generateFilterForModifiedAndNewRows(
       includeNotMatchedFilter: Boolean = true): Expression = {
     val matchedExpression = if (matchedClauses.nonEmpty) {
-      Seq(And(Column(condition).expr, combineClausesWithOr(matchedClauses)))
+      And(Column(condition).expr, combineClausesWithOr(matchedClauses))
     } else {
-      Seq(Column(condition).expr)
+      Literal.FalseLiteral
     }
 
-    val notMatchedExpressionOpt = if (includeNotMatchedFilter && notMatchedClauses.nonEmpty) {
+    val notMatchedExpression = if (includeNotMatchedFilter && notMatchedClauses.nonEmpty) {
       val combinedClauses = combineClausesWithOr(notMatchedClauses)
-      Some(And(col(TARGET_ROW_PRESENT_COL).isNull.expr, combinedClauses))
+      And(col(TARGET_ROW_PRESENT_COL).isNull.expr, combinedClauses)
     } else {
-      None
+      Literal.FalseLiteral
     }
 
-    val notMatchedBySourceExpressionOpt = if (notMatchedBySourceClauses.nonEmpty) {
+    val notMatchedBySourceExpression = if (notMatchedBySourceClauses.nonEmpty) {
       val combinedClauses = combineClausesWithOr(notMatchedBySourceClauses)
-      Some(And(col(SOURCE_ROW_PRESENT_COL).isNull.expr, combinedClauses))
+      And(col(SOURCE_ROW_PRESENT_COL).isNull.expr, combinedClauses)
     } else {
-      None
+      Literal.FalseLiteral
     }
 
-    (matchedExpression ++ notMatchedExpressionOpt ++ notMatchedBySourceExpressionOpt)
-      .reduce((a, b) => Or(a, b))
+    Or(matchedExpression, Or(notMatchedExpression, notMatchedBySourceExpression))
   }
 
   /**
@@ -492,10 +491,25 @@ trait ClassicMergeExecutor extends MergeOutputGeneration {
     val touchedFilesWithDVs = DMLWithDeletionVectorsHelper
       .findFilesWithMatchingRows(deltaTxn, nameToAddFileMap, matchedDVResult)
 
-    val (dvActions, _) = DMLWithDeletionVectorsHelper.processUnmodifiedData(
+    val (dvActions, metricsMap) = DMLWithDeletionVectorsHelper.processUnmodifiedData(
       spark,
       touchedFilesWithDVs,
       deltaTxn.snapshot)
+
+    metrics("numTargetDeletionVectorsAdded")
+      .set(metricsMap.getOrElse("numDeletionVectorsAdded", 0L))
+    metrics("numTargetDeletionVectorsRemoved")
+      .set(metricsMap.getOrElse("numDeletionVectorsRemoved", 0L))
+    metrics("numTargetDeletionVectorsUpdated")
+      .set(metricsMap.getOrElse("numDeletionVectorsUpdated", 0L))
+
+    // When DVs are enabled we override metrics related to removed files.
+    metrics("numTargetFilesRemoved").set(metricsMap.getOrElse("numRemovedFiles", 0L))
+
+    val fullyRemovedFiles = touchedFilesWithDVs.filter(_.isFullyReplaced()).map(_.fileLogEntry)
+    val (removedBytes, removedPartitions) = totalBytesAndDistinctPartitionValues(fullyRemovedFiles)
+    metrics("numTargetBytesRemoved").set(removedBytes)
+    metrics("numTargetPartitionsRemovedFrom").set(removedPartitions)
 
     dvActions
   }

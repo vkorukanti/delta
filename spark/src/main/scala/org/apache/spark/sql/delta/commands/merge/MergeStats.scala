@@ -105,6 +105,10 @@ case class MergeStats(
     targetRowsMatchedDeleted: Long,
     targetRowsNotMatchedBySourceDeleted: Long,
 
+    numTargetDeletionVectorsAdded: Long,
+    numTargetDeletionVectorsRemoved: Long,
+    numTargetDeletionVectorsUpdated: Long,
+
     // MergeMaterializeSource stats
     materializeSourceReason: Option[String] = None,
     @JsonDeserialize(contentAs = classOf[java.lang.Long])
@@ -171,6 +175,11 @@ object MergeStats {
       targetRowsDeleted = metrics("numTargetRowsDeleted").value,
       targetRowsMatchedDeleted = metrics("numTargetRowsMatchedDeleted").value,
       targetRowsNotMatchedBySourceDeleted = metrics("numTargetRowsNotMatchedBySourceDeleted").value,
+
+      // Deletion Vector metrics.
+      numTargetDeletionVectorsAdded = metrics("numTargetDeletionVectorsAdded").value,
+      numTargetDeletionVectorsRemoved = metrics("numTargetDeletionVectorsRemoved").value,
+      numTargetDeletionVectorsUpdated = metrics("numTargetDeletionVectorsUpdated").value,
 
       // Deprecated fields
       updateConditionExpr = null,
