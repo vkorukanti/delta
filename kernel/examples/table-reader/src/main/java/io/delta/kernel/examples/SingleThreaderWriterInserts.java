@@ -56,33 +56,19 @@ public class SingleThreaderWriterInserts {
                         intVector(Arrays.asList(1, 2, 3, 4, 5)),
                         intSingleValueVector(5, 100)));
 
+        // for each partition group emphasize
         // Transform the data to physical format
-        CloseableIterator<FilteredColumnarBatch> dataIterTransformed =
-                Transaction.transformLogicalData(tableClient, txnState, dataIter);
+        Tuple2<CloseableIterator<FilteredColumnarBatch>, Metadata> dataIterTransformed =
+                Transaction.transformPartitionedLogicalData(tableClient, txnState, dataIter);
 
-        String tableRoot = TransactionStateRow.getTableRoot(txnState);
-        long maxFileSize = TransactionStateRow.getTargetFileSize(txnState);
-
-        // Remove the partition columns from the data as they don't need to persist
-        // into the Parquet files
-        CloseableIterator<FilteredColumnarBatch> dataWithoutPartitions
-                = dataIterTransformed.map(filteredColumnarBatch -> {
-            filteredColumnarBatch.getData().withDeletedColumnAt(1);
-            return filteredColumnarBatch;
-        });
-
-        // Get the part of the schema that the table needs stats for each file.
-        StructType statsSchema = Transaction.getStatisticsSchema(
-                tableClient,
-                txnState);
-
+        // Emphasize connector can use its own Parquet writer.
         // Write the physical data into Parquet files
         CloseableIterator<Row> fileStatusIter = tableClient
                 .getParquetHandler()
                 .writeParquetFiles(
-                        tableRoot,
+                        metadata.tableRoot,
                         dataWithoutPartitions,
-                        maxFileSize,
+                        metadata.maxFileSize,
                         statsSchema);
 
         // Convert the staged file actions into a delta log actions
@@ -91,11 +77,8 @@ public class SingleThreaderWriterInserts {
                         tableClient,
                         txnState,
                         fileStatusIter,
-                        new HashMap<String, Literal>() {
-                            {
-                                this.put("part1", Literal.ofInt(100));
-                            }
-                        });
+                        metadata.getWriteSchema(),
+                        metadata.getPartitionValues());
 
 
         // Save the actions from iterator in a list, so that we can access the actions
