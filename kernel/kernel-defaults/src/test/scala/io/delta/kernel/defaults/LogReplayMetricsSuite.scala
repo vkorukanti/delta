@@ -18,9 +18,9 @@ package io.delta.kernel.defaults
 
 import java.io.File
 import io.delta.kernel.Table
-import io.delta.kernel.engine.{ExpressionHandler, FileSystemClient, Engine}
+import io.delta.kernel.engine.{Engine, ExpressionHandler, FileSystemClient}
 import io.delta.kernel.data.ColumnarBatch
-import io.delta.kernel.defaults.engine.{DefaultJsonHandler, DefaultParquetHandler, DefaultEngine}
+import io.delta.kernel.defaults.engine.{DefaultEngine, DefaultJsonHandler, DefaultParquetHandler, FileSystemProvider}
 import io.delta.kernel.expressions.Predicate
 import io.delta.kernel.internal.fs.Path
 import io.delta.kernel.internal.util.FileNames
@@ -359,7 +359,7 @@ trait FileReadMetrics { self: Object =>
 
 /** A JsonHandler that collects metrics on the Delta commit (.json) files read */
 class MetricsJsonHandler(config: Configuration)
-    extends DefaultJsonHandler(config)
+    extends DefaultJsonHandler(config, new FileSystemProvider {})
     with FileReadMetrics {
 
   override def readJsonFiles(
@@ -372,7 +372,7 @@ class MetricsJsonHandler(config: Configuration)
 
 /** A ParquetHandler that collects metrics on the Delta checkpoint (.parquet) files read */
 class MetricsParquetHandler(config: Configuration)
-    extends DefaultParquetHandler(config)
+    extends DefaultParquetHandler(config, new FileSystemProvider {})
     with FileReadMetrics {
 
   override def readParquetFiles(

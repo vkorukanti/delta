@@ -15,9 +15,6 @@
  */
 package io.delta.kernel.defaults.engine
 
-import java.math.{BigDecimal => JBigDecimal}
-import java.util.Optional
-import scala.collection.JavaConverters._
 import io.delta.kernel.data.ColumnVector
 import io.delta.kernel.defaults.utils.{DefaultVectorTestUtils, TestRow, TestUtils}
 import io.delta.kernel.internal.util.InternalUtils.singletonStringColumnVector
@@ -25,7 +22,10 @@ import io.delta.kernel.types._
 import org.apache.hadoop.conf.Configuration
 import org.scalatest.funsuite.AnyFunSuite
 
+import java.math.{BigDecimal => JBigDecimal}
 import java.nio.file.FileAlreadyExistsException
+import java.util.Optional
+import scala.collection.JavaConverters._
 
 // NOTE: currently tests are split across scala and java; additional tests are in
 // TestDefaultJsonHandler.java
@@ -33,7 +33,8 @@ class DefaultJsonHandlerSuite extends AnyFunSuite with TestUtils with DefaultVec
 
   val jsonHandler = new DefaultJsonHandler(new Configuration {
     set("delta.kernel.default.json.reader.batch-size", "1")
-  })
+  }, new FileSystemProvider {}
+  )
   val fsClient = defaultEngine.getFileSystemClient
 
   /////////////////////////////////////////////////////////////////////////////////////////////////

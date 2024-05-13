@@ -20,6 +20,7 @@ import java.io.UncheckedIOException;
 import java.net.URI;
 import java.util.*;
 import static java.lang.String.format;
+import static java.util.Objects.requireNonNull;
 
 import io.delta.storage.LogStore;
 import org.apache.hadoop.conf.Configuration;
@@ -47,14 +48,21 @@ import io.delta.kernel.defaults.internal.parquet.ParquetFileWriter;
  */
 public class DefaultParquetHandler implements ParquetHandler {
     private final Configuration hadoopConf;
+    private final FileSystemProvider fsProvider;
 
     /**
      * Create an instance of default {@link ParquetHandler} implementation.
      *
      * @param hadoopConf Hadoop configuration to use.
+     * @param fsProvider {@link FileSystem} provider.
      */
-    public DefaultParquetHandler(Configuration hadoopConf) {
-        this.hadoopConf = hadoopConf;
+    public DefaultParquetHandler(Configuration hadoopConf, FileSystemProvider fsProvider) {
+        this.hadoopConf = requireNonNull(hadoopConf, "hadoopConf is null");
+        this.fsProvider = requireNonNull(fsProvider, "fileSystemProvider is null");
+    }
+
+    protected DefaultParquetHandler(Configuration hadoopConf) {
+        this(hadoopConf, new FileSystemProvider() {});
     }
 
     @Override
@@ -63,7 +71,8 @@ public class DefaultParquetHandler implements ParquetHandler {
             StructType physicalSchema,
             Optional<Predicate> predicate) throws IOException {
         return new CloseableIterator<ColumnarBatch>() {
-            private final ParquetFileReader batchReader = new ParquetFileReader(hadoopConf);
+            private final ParquetFileReader batchReader =
+                    new ParquetFileReader(hadoopConf, fsProvider);
             private CloseableIterator<ColumnarBatch> currentFileReader;
 
             @Override
@@ -103,9 +112,12 @@ public class DefaultParquetHandler implements ParquetHandler {
             String directoryPath,
             CloseableIterator<FilteredColumnarBatch> dataIter,
             List<Column> statsColumns) throws IOException {
-        ParquetFileWriter batchWriter =
-            new ParquetFileWriter(hadoopConf, new Path(URI.create(directoryPath)), statsColumns);
-        return batchWriter.write(dataIter);
+        ParquetFileWriter fileWriter = new ParquetFileWriter(
+                hadoopConf,
+                new Path(URI.create(directoryPath)),
+                statsColumns,
+                fsProvider);
+        return fileWriter.write(dataIter);
     }
 
     /**
@@ -134,7 +146,8 @@ public class DefaultParquetHandler implements ParquetHandler {
                 String tempFileName = format(".%s.%s.tmp", targetPath.getName(), UUID.randomUUID());
                 writePath = new Path(targetPath.getParent(), tempFileName);
             }
-            ParquetFileWriter fileWriter = new ParquetFileWriter(hadoopConf, writePath);
+            ParquetFileWriter fileWriter =
+                    new ParquetFileWriter(hadoopConf, writePath, fsProvider);
 
             Optional<DataFileStatus> writtenFile;
 
@@ -146,7 +159,7 @@ public class DefaultParquetHandler implements ParquetHandler {
 
             checkState(writtenFile.isPresent(), "expected to write one output file");
             if (useRename) {
-                FileSystem fs = targetPath.getFileSystem(hadoopConf);
+                FileSystem fs = fsProvider.getFileSystem(hadoopConf, targetPath);
                 boolean renameDone = false;
                 try {
                     renameDone = fs.rename(writePath, targetPath);

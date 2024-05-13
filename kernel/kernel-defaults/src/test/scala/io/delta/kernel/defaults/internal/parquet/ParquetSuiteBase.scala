@@ -20,6 +20,7 @@ import java.util.Optional
 import scala.collection.JavaConverters._
 import scala.util.control.NonFatal
 import io.delta.kernel.data.{ColumnarBatch, FilteredColumnarBatch}
+import io.delta.kernel.defaults.engine.FileSystemProvider
 import io.delta.kernel.defaults.utils.{TestRow, TestUtils}
 import io.delta.kernel.expressions.{Column, Predicate}
 import io.delta.kernel.internal.util.ColumnMapping
@@ -192,7 +193,7 @@ trait ParquetSuiteBase extends TestUtils {
     val conf = new Configuration(configuration);
     conf.setLong(ParquetFileWriter.TARGET_FILE_SIZE_CONF, targetFileSize)
     val parquetWriter = new ParquetFileWriter(
-      conf, new Path(location), statsColumns.asJava)
+      conf, new Path(location), statsColumns.asJava, new FileSystemProvider {})
 
     parquetWriter.write(toCloseableIterator(filteredData.asJava.iterator())).toSeq
   }

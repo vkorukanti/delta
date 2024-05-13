@@ -22,6 +22,7 @@ import java.util.*;
 import static java.util.Objects.requireNonNull;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.parquet.filter2.predicate.FilterPredicate;
 import org.apache.parquet.hadoop.ParquetRecordReaderWrapper;
@@ -42,17 +43,23 @@ import io.delta.kernel.utils.CloseableIterator;
 import io.delta.kernel.internal.util.Utils;
 import static io.delta.kernel.internal.util.Preconditions.checkArgument;
 
+import io.delta.kernel.defaults.engine.FileSystemProvider;
+
+import io.delta.kernel.defaults.internal.DefaultKernelUtils;
+import static io.delta.kernel.defaults.internal.DefaultKernelUtils.pathWithCustomFSProvider;
 import static io.delta.kernel.defaults.internal.parquet.ParquetFilterUtils.toParquetFilter;
 
 public class ParquetFileReader {
     private final Configuration configuration;
     private final int maxBatchSize;
+    private final FileSystemProvider fsProvider;
 
-    public ParquetFileReader(Configuration configuration) {
+    public ParquetFileReader(Configuration configuration, FileSystemProvider fsProvider) {
         this.configuration = requireNonNull(configuration, "configuration is null");
         this.maxBatchSize =
                 configuration.getInt("delta.kernel.default.parquet.reader.batch-size", 1024);
         checkArgument(maxBatchSize > 0, "invalid Parquet reader batch size: " + maxBatchSize);
+        this.fsProvider = requireNonNull(fsProvider, "fsProvider is null");
     }
 
     public CloseableIterator<ColumnarBatch> read(
@@ -109,47 +116,46 @@ public class ParquetFileReader {
             }
 
             private void initParquetReaderIfRequired() {
-                if (reader == null) {
-                    org.apache.parquet.hadoop.ParquetFileReader fileReader = null;
-                    try {
-                        Configuration confCopy = configuration;
-                        Path filePath = new Path(URI.create(path));
+                if (reader != null) {
+                    return;
+                }
+                org.apache.parquet.hadoop.ParquetFileReader fileReader = null;
+                try {
+                    Configuration confCopy = configuration;
+                    Path filePath = pathWithCustomFSProvider(URI.create(path), fsProvider);
 
-                        // We need physical schema in order to construct a filter that can be
-                        // pushed into the `parquet-mr` reader. For that reason read the footer
-                        // in advance.
-                        ParquetMetadata footer =
-                                org.apache.parquet.hadoop.ParquetFileReader.readFooter(
-                                        confCopy,
-                                        filePath);
+                    // We need physical schema in order to construct a filter that can be
+                    // pushed into the `parquet-mr` reader. For that reason read the footer
+                    // in advance.
+                    ParquetMetadata footer = org.apache.parquet.hadoop.ParquetFileReader
+                            .readFooter(confCopy, filePath);
 
-                        MessageType parquetSchema = footer.getFileMetaData().getSchema();
-                        Optional<FilterPredicate> parquetPredicate = predicate.flatMap(
-                                predicate -> toParquetFilter(parquetSchema, predicate));
+                    MessageType parquetSchema = footer.getFileMetaData().getSchema();
+                    Optional<FilterPredicate> parquetPredicate = predicate.flatMap(
+                            predicate -> toParquetFilter(parquetSchema, predicate));
 
-                        if (parquetPredicate.isPresent()) {
-                            // clone the configuration to avoid modifying the original one
-                            confCopy = new Configuration(confCopy);
+                    if (parquetPredicate.isPresent()) {
+                        // clone the configuration to avoid modifying the original one
+                        confCopy = new Configuration(confCopy);
 
-                            setFilterPredicate(confCopy, parquetPredicate.get());
-                            // Disable the record level filtering as the `parquet-mr` evaluates
-                            // the filter once the entire record has been materialized. Instead,
-                            // we use the predicate to prune the row groups which is more efficient.
-                            // In the future, we can consider using the record level filtering if a
-                            // native Parquet reader is implemented in Kernel default module.
-                            confCopy.set(RECORD_FILTERING_ENABLED, "false");
-                            confCopy.set(DICTIONARY_FILTERING_ENABLED, "false");
-                            confCopy.set(COLUMN_INDEX_FILTERING_ENABLED, "false");
-                        }
-
-                        // Pass the already read footer to the reader to avoid reading it again.
-                        fileReader = new ParquetFileReaderWithFooter(filePath, confCopy, footer);
-                        reader = new ParquetRecordReaderWrapper<>(readSupport);
-                        reader.initialize(fileReader, confCopy);
-                    } catch (IOException e) {
-                        Utils.closeCloseablesSilently(fileReader, reader);
-                        throw new UncheckedIOException(e);
+                        setFilterPredicate(confCopy, parquetPredicate.get());
+                        // Disable the record level filtering as the `parquet-mr` evaluates
+                        // the filter once the entire record has been materialized. Instead,
+                        // we use the predicate to prune the row groups which is more efficient.
+                        // In the future, we can consider using the record level filtering if a
+                        // native Parquet reader is implemented in Kernel default module.
+                        confCopy.set(RECORD_FILTERING_ENABLED, "false");
+                        confCopy.set(DICTIONARY_FILTERING_ENABLED, "false");
+                        confCopy.set(COLUMN_INDEX_FILTERING_ENABLED, "false");
                     }
+
+                    // Pass the already read footer to the reader to avoid reading it again.
+                    fileReader = new ParquetFileReaderWithFooter(filePath, confCopy, footer);
+                    reader = new ParquetRecordReaderWrapper<>(readSupport);
+                    reader.initialize(fileReader, confCopy);
+                } catch (IOException e) {
+                    Utils.closeCloseablesSilently(fileReader, reader);
+                    throw new UncheckedIOException(e);
                 }
             }
         };

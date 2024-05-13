@@ -36,8 +36,7 @@ import io.delta.kernel.utils.FileStatus;
 
 import io.delta.kernel.internal.util.Utils;
 
-import io.delta.kernel.defaults.engine.DefaultEngine;
-import io.delta.kernel.defaults.engine.DefaultParquetHandler;
+import io.delta.kernel.defaults.engine.*;
 
 import io.delta.kernel.defaults.internal.parquet.ParquetFileReader;
 
@@ -150,7 +149,7 @@ public class BenchmarkParallelCheckpointReading {
             return DefaultEngine.create(hadoopConf);
         }
 
-        return new DefaultEngine(hadoopConf) {
+        return new DefaultEngine(hadoopConf, new FileSystemProvider() {}) {
             @Override
             public ParquetHandler getParquetHandler() {
                 return new ParallelParquetHandler(hadoopConf, numberOfParallelThreads);
@@ -171,7 +170,7 @@ public class BenchmarkParallelCheckpointReading {
         private final int numberOfParallelThreads;
 
         ParallelParquetHandler(Configuration hadoopConf, int numberOfParallelThreads) {
-            super(hadoopConf);
+            super(hadoopConf, new FileSystemProvider() {});
             this.hadoopConf = hadoopConf;
             this.numberOfParallelThreads = numberOfParallelThreads;
         }
@@ -234,7 +233,8 @@ public class BenchmarkParallelCheckpointReading {
         }
 
         List<ColumnarBatch> parquetFileReader(String filePath, StructType readSchema) {
-            ParquetFileReader reader = new ParquetFileReader(hadoopConf);
+            ParquetFileReader reader =
+                    new ParquetFileReader(hadoopConf, new FileSystemProvider() {});
             try (CloseableIterator<ColumnarBatch> batchIter =
                          reader.read(filePath, readSchema, Optional.empty())) {
                 List<ColumnarBatch> batches = new ArrayList<>();

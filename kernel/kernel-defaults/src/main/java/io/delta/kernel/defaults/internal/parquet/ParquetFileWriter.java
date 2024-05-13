@@ -22,7 +22,7 @@ import static java.util.Objects.requireNonNull;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
-import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.*;
 import org.apache.parquet.hadoop.ParquetOutputFormat;
 import org.apache.parquet.hadoop.ParquetWriter;
 import org.apache.parquet.hadoop.api.WriteSupport;
@@ -40,7 +40,11 @@ import io.delta.kernel.utils.*;
 import io.delta.kernel.internal.util.Utils;
 import static io.delta.kernel.internal.util.Preconditions.checkArgument;
 
+import io.delta.kernel.defaults.engine.FileSystemProvider;
+
+import io.delta.kernel.defaults.internal.DefaultKernelUtils;
 import io.delta.kernel.defaults.internal.parquet.ParquetColumnWriters.ColumnWriter;
+import static io.delta.kernel.defaults.internal.DefaultKernelUtils.pathWithCustomFSProvider;
 import static io.delta.kernel.defaults.internal.parquet.ParquetStatsReader.readDataFileStatistics;
 
 /**
@@ -59,6 +63,7 @@ public class ParquetFileWriter {
     public static final long DEFAULT_TARGET_FILE_SIZE = 128 * 1024 * 1024; // 128MB
 
     private final Configuration configuration;
+    private final FileSystemProvider fsProvider;
     private final boolean writeAsSingleFile;
     private final Path location;
     private final long targetMaxFileSize;
@@ -73,7 +78,8 @@ public class ParquetFileWriter {
     public ParquetFileWriter(
             Configuration configuration,
             Path location,
-            List<Column> statsColumns) {
+            List<Column> statsColumns,
+            FileSystemProvider fsProvider) {
         this.configuration = requireNonNull(configuration, "configuration is null");
         this.location = requireNonNull(location, "directory is null");
         // Default target file size is 128 MB.
@@ -83,17 +89,19 @@ public class ParquetFileWriter {
                 targetMaxFileSize > 0, "Invalid target Parquet file size: " + targetMaxFileSize);
         this.statsColumns = requireNonNull(statsColumns, "statsColumns is null");
         this.writeAsSingleFile = false;
+        this.fsProvider = requireNonNull(fsProvider, "fileSystemProvider is null");
     }
 
     /**
      * Create writer to write the data exactly into one file.
      */
-    public ParquetFileWriter(Configuration configuration, Path destPath) {
+    public ParquetFileWriter(Configuration configuration, Path destPath, FileSystemProvider fsProvider) {
         this.configuration = requireNonNull(configuration, "configuration is null");
         this.writeAsSingleFile = true;
         this.location = requireNonNull(destPath, "destPath is null");
         this.targetMaxFileSize = Long.MAX_VALUE;
         this.statsColumns = Collections.emptyList();
+        this.fsProvider = requireNonNull(fsProvider, "fileSystemProvider is null");
     }
 
     /**
@@ -318,10 +326,10 @@ public class ParquetFileWriter {
     private Path generateNextFilePath() {
         if (writeAsSingleFile) {
             checkArgument(currentFileNumber++ == 0, "expected to write just one file");
-            return location;
+            return pathWithCustomFSProvider(location.toUri(), fsProvider);
         }
         String fileName = String.format("%s-%03d.parquet", UUID.randomUUID(), currentFileNumber++);
-        return new Path(location, fileName);
+        return pathWithCustomFSProvider(new Path(location, fileName).toUri(), fsProvider);
     }
 
     /**

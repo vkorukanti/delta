@@ -17,6 +17,8 @@ package io.delta.kernel.defaults.engine;
 
 import java.io.*;
 
+import static java.util.Objects.requireNonNull;
+
 import io.delta.storage.LogStore;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -59,6 +61,7 @@ import io.delta.kernel.defaults.internal.logstore.LogStoreProvider;
 public class DefaultFileSystemClient
         implements FileSystemClient {
     private final Configuration hadoopConf;
+    private final FileSystemProvider fsProvider;
 
     /**
      * Create an instance of the default {@link FileSystemClient} implementation.
@@ -66,8 +69,9 @@ public class DefaultFileSystemClient
      * @param hadoopConf Configuration to use. List of options to customize the behavior of
      *                   the client can be found in the class documentation.
      */
-    public DefaultFileSystemClient(Configuration hadoopConf) {
-        this.hadoopConf = hadoopConf;
+    public DefaultFileSystemClient(Configuration hadoopConf, FileSystemProvider fsProvider) {
+        this.hadoopConf = requireNonNull(hadoopConf, "hadoopConf is null");
+        this.fsProvider = requireNonNull(fsProvider, "fileSystemProvider is null");
     }
 
     @Override
@@ -86,7 +90,7 @@ public class DefaultFileSystemClient
     @Override
     public String resolvePath(String path) throws IOException {
         Path pathObject = new Path(path);
-        FileSystem fs = pathObject.getFileSystem(hadoopConf);
+        FileSystem fs = fsProvider.getFileSystem(hadoopConf, pathObject);
         return fs.makeQualified(pathObject).toString();
     }
 
@@ -100,14 +104,14 @@ public class DefaultFileSystemClient
     @Override
     public boolean mkdirs(String path) throws IOException {
         Path pathObject = new Path(path);
-        FileSystem fs = pathObject.getFileSystem(hadoopConf);
+        FileSystem fs = fsProvider.getFileSystem(hadoopConf, pathObject);
         return fs.mkdirs(pathObject);
     }
 
     private ByteArrayInputStream getStream(String filePath, int offset, int size) {
         Path path = new Path(filePath);
         try {
-            FileSystem fs = path.getFileSystem(hadoopConf);
+            FileSystem fs = fsProvider.getFileSystem(hadoopConf, path);
             try (DataInputStream stream = fs.open(path)) {
                 stream.skipBytes(offset);
                 byte[] buff = new byte[size];

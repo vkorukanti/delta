@@ -20,9 +20,7 @@ import java.sql.Date
 import java.time.{Instant, OffsetDateTime}
 import java.time.temporal.ChronoUnit
 import java.util.Optional
-
 import scala.collection.JavaConverters._
-
 import io.delta.golden.GoldenTableUtils.goldenTablePath
 import org.apache.hadoop.conf.Configuration
 import org.apache.spark.sql.{Row => SparkRow}
@@ -30,9 +28,8 @@ import org.apache.spark.sql.catalyst.plans.SQLHelper
 import org.apache.spark.sql.delta.{DeltaConfigs, DeltaLog}
 import org.apache.spark.sql.types.{IntegerType => SparkIntegerType, StructField => SparkStructField, StructType => SparkStructType}
 import org.scalatest.funsuite.AnyFunSuite
-
-import io.delta.kernel.engine.{JsonHandler, ParquetHandler, Engine}
-import io.delta.kernel.data.{ColumnarBatch, ColumnVector, FilteredColumnarBatch, Row}
+import io.delta.kernel.engine.{Engine, JsonHandler, ParquetHandler}
+import io.delta.kernel.data.{ColumnVector, ColumnarBatch, FilteredColumnarBatch, Row}
 import io.delta.kernel.expressions.{AlwaysFalse, AlwaysTrue, And, Column, Or, Predicate, ScalarExpression}
 import io.delta.kernel.expressions.Literal._
 import io.delta.kernel.types.StructType
@@ -42,7 +39,7 @@ import io.delta.kernel.utils.{CloseableIterator, FileStatus}
 import io.delta.kernel.{Scan, Snapshot, Table}
 import io.delta.kernel.internal.util.InternalUtils
 import io.delta.kernel.internal.{InternalScanFileUtils, ScanImpl}
-import io.delta.kernel.defaults.engine.{DefaultJsonHandler, DefaultParquetHandler, DefaultEngine}
+import io.delta.kernel.defaults.engine.{DefaultEngine, DefaultJsonHandler, DefaultParquetHandler, FileSystemProvider}
 import io.delta.kernel.defaults.utils.{ExpressionTestUtils, TestUtils}
 
 class ScanSuite extends AnyFunSuite with TestUtils with ExpressionTestUtils with SQLHelper {
@@ -1605,7 +1602,7 @@ object ScanSuite {
    */
   def engineDisallowedStatsReads: Engine = {
     val hadoopConf = new Configuration()
-    new DefaultEngine(hadoopConf) {
+    new DefaultEngine(hadoopConf, new FileSystemProvider {}) {
 
       override def getParquetHandler: ParquetHandler = {
         new DefaultParquetHandler(hadoopConf) {

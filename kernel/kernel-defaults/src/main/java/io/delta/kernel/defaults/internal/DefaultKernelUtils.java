@@ -15,8 +15,14 @@
  */
 package io.delta.kernel.defaults.internal;
 
+import java.io.IOException;
+import java.net.URI;
 import java.time.LocalDate;
 import java.util.concurrent.TimeUnit;
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
 
 import io.delta.kernel.expressions.Column;
 import io.delta.kernel.types.DataType;
@@ -24,6 +30,8 @@ import io.delta.kernel.types.StructType;
 
 import io.delta.kernel.internal.util.DateTimeConstants;
 import io.delta.kernel.internal.util.Tuple2;
+
+import io.delta.kernel.defaults.engine.FileSystemProvider;
 
 public class DefaultKernelUtils {
     private static final LocalDate EPOCH = LocalDate.ofEpochDay(0);
@@ -88,5 +96,24 @@ public class DefaultKernelUtils {
             }
         }
         return dataType;
+    }
+
+    /**
+     * Create a path with the given path that returns a custom {@link FileSystem} instance when
+     * {@link Path#getFileSystem(Configuration)} is called.
+     *
+     * @param pathUri    the URI of the path. This URI is used to create the {@link Path} instance.
+     *                   {@link URI} used instead of {@link String} to represent the resolved path
+     *                   to avoid ambiguity.
+     * @param fsProvider the custom {@link FileSystemProvider} to use
+     * @return the path with the custom {@link FileSystemProvider}
+     */
+    public static Path pathWithCustomFSProvider(URI pathUri, FileSystemProvider fsProvider) {
+        return new Path(pathUri) {
+            @Override
+            public FileSystem getFileSystem(Configuration conf) throws IOException {
+                return fsProvider.getFileSystem(conf, this);
+            }
+        };
     }
 }

@@ -20,17 +20,20 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
+import static java.util.Objects.requireNonNull;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.delta.storage.LogStore;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.*;
 
 import io.delta.kernel.data.*;
 import io.delta.kernel.engine.JsonHandler;
 import io.delta.kernel.expressions.Predicate;
-import io.delta.kernel.types.*;
+import io.delta.kernel.types.StructType;
 import io.delta.kernel.utils.CloseableIterator;
 import io.delta.kernel.utils.FileStatus;
 
@@ -55,12 +58,24 @@ public class DefaultJsonHandler implements JsonHandler {
 
     private final Configuration hadoopConf;
     private final int maxBatchSize;
+    private final FileSystemProvider fileSystemProvider;
 
-    public DefaultJsonHandler(Configuration hadoopConf) {
+    /**
+     * Create an instance of default {@link JsonHandler} implementation.
+     *
+     * @param hadoopConf         Hadoop configuration to use.
+     * @param fileSystemProvider Provider of {@link org.apache.hadoop.fs.FileSystem} instances.
+     */
+    public DefaultJsonHandler(Configuration hadoopConf, FileSystemProvider fileSystemProvider) {
         this.hadoopConf = hadoopConf;
         this.maxBatchSize =
             hadoopConf.getInt("delta.kernel.default.json.reader.batch-size", 1024);
+        this.fileSystemProvider = requireNonNull(fileSystemProvider, "fileSystemProvider is null");
         checkArgument(maxBatchSize > 0, "invalid JSON reader batch size: " + maxBatchSize);
+    }
+
+    protected DefaultJsonHandler(Configuration hadoopConf) {
+        this(hadoopConf, new FileSystemProvider() {});
     }
 
     @Override
@@ -159,7 +174,7 @@ public class DefaultJsonHandler implements JsonHandler {
                 if (scanFileIter.hasNext()) {
                     currentFile = scanFileIter.next();
                     Path filePath = new Path(currentFile.getPath());
-                    FileSystem fs = filePath.getFileSystem(hadoopConf);
+                    FileSystem fs = fileSystemProvider.getFileSystem(hadoopConf, filePath);
                     FSDataInputStream stream = null;
                     try {
                         stream = fs.open(filePath);
