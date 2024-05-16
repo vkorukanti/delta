@@ -23,13 +23,14 @@ import io.delta.kernel.internal.actions.Protocol;
 
 public class VersionStats {
 
-    public static VersionStats fromColumnarBatch(ColumnarBatch batch, int rowId, Engine engine) {
+    public static VersionStats fromColumnarBatch(
+            Engine engine, long version, ColumnarBatch batch, int rowId) {
         // fromColumnVector already takes care of nulls
         Protocol protocol = Protocol.fromColumnVector(
             batch.getColumnVector(PROTOCOL_ORDINAL), rowId);
         Metadata metadata = Metadata.fromColumnVector(
             batch.getColumnVector(METADATA_ORDINAL), rowId, engine);
-        return new VersionStats(metadata, protocol);
+        return new VersionStats(version, metadata, protocol);
     }
 
     // We can add additional fields later
@@ -40,15 +41,22 @@ public class VersionStats {
     private static final int PROTOCOL_ORDINAL = 0;
     private static final int METADATA_ORDINAL = 1;
 
+    private final long version;
     private final Metadata metadata;
     private final Protocol protocol;
 
-    protected VersionStats(Metadata metadata, Protocol protocol) {
+    protected VersionStats(long version, Metadata metadata, Protocol protocol) {
+        this.version = version;
         this.metadata = metadata;
         this.protocol = protocol;
     }
 
-    // TODO Make sure to test when there is a CRC file but it does not have metadata/protocol
+    /**
+     * The version of the Delta table that this VersionStats represents.
+     */
+    public long getVersion() {
+        return version;
+    }
 
     /**
      * The {@link Metadata} stored in this VersionStats. May be null.
@@ -63,6 +71,4 @@ public class VersionStats {
     public Protocol getProtocol() {
         return protocol;
     }
-
-    // TODO reconcile
 }

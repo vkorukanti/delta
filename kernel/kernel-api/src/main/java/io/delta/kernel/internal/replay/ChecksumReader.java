@@ -15,61 +15,118 @@
  */
 package io.delta.kernel.internal.replay;
 
-import java.util.Optional;
-import java.util.regex.Pattern;
+import java.util.*;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import io.delta.kernel.data.ColumnarBatch;
 import io.delta.kernel.engine.Engine;
 import io.delta.kernel.utils.CloseableIterator;
 import io.delta.kernel.utils.FileStatus;
+
 import io.delta.kernel.internal.fs.Path;
+import io.delta.kernel.internal.util.FileNames;
+import static io.delta.kernel.internal.replay.VersionStats.fromColumnarBatch;
+import static io.delta.kernel.internal.util.FileNames.checksumFile;
+import static io.delta.kernel.internal.util.FileNames.isChecksumFile;
 import static io.delta.kernel.internal.util.Utils.singletonCloseableIterator;
 
 /**
- * TODO
+ * Utility method to load protocol and metadata from the Delta log checksum files.
  */
 public class ChecksumReader {
+    private static final Logger logger = LoggerFactory.getLogger(ChecksumReader.class);
 
-    // private static final Pattern DELTA_FILE_PATTERN = Pattern.compile("\\d+\\.json");
-    private static final Pattern CHECKSUM_FILE_PATTERN = Pattern.compile("\\d+\\.crc");
-
-    private static Path checksumFile(Path path, long version) {
-        return new Path(path, String.format("%020d.crc", version));
-    }
-
+    /**
+     * Load the protocol and metadata from the checksum file at the given version. If the checksum
+     * file is not found at the given version, it will try to find the latest checksum file that is
+     * created after the lower bound version or within the last 100 versions.
+     *
+     * @param engine        the engine to use for reading the checksum file
+     * @param logPath       the path to the Delta log
+     * @param readVersion   the version to read the checksum file from
+     * @param lowerBoundOpt the lower bound version to search for the checksum file
+     * @return Optional {@link VersionStats} containing the protocol and metadata, and the version
+     * of the checksum file. If the checksum file is not found, it will return an empty
+     */
     public static Optional<VersionStats> getVersionStats(
-            Path logPath, long version, Engine engine) { // checksumFileReconciliationWindow
+            Engine engine,
+            Path logPath,
+            long readVersion,
+            Optional<Long> lowerBoundOpt) {
 
-        // For now, read just the requested version CRC
-        return readChecksumFile(checksumFile(logPath, version), engine);
+        // First try to load the CRC at given version. If not found or failed to read then try to
+        // find the latest CRC file that is created after the lower bound version or within the
+        // last 100 versions.
+        Path crcFilePath = checksumFile(logPath, readVersion);
+        Optional<VersionStats> versionStatsOpt = readChecksumFile(engine, crcFilePath);
+        if (versionStatsOpt.isPresent() ||
+                // we don't expect any more checksum files as it is the first version
+                readVersion == 0) {
+            return versionStatsOpt;
+        }
 
-        // TODO read in the checksumFileReconciliationWindow and reconcile if found
-        //   use SnapshotHint as a lowerbound such that it becomes (availableCRC, snapshotHint)
+        // Try to list the last 100 CRC files and see if we can find a CRC that we can use
+        long lowerBound = Math.max(
+                lowerBoundOpt.orElse(0L) + 1,
+                Math.max(0, readVersion - 100));
+
+        Path listFrom = checksumFile(logPath, lowerBound);
+        try (CloseableIterator<FileStatus> crcFiles =
+                     engine.getFileSystemClient().listFrom(listFrom.toString())) {
+
+            List<FileStatus> crcFilesList = new ArrayList<>();
+            crcFiles.filter(file -> isChecksumFile(new Path(file.getPath()).getName()))
+                    .forEachRemaining(crcFilesList::add);
+
+            // pick the last file which is the latest version that has the CRC file
+            if (crcFilesList.isEmpty()) {
+                logger.warn("No checksum files found in the range {} to {}", lowerBound,
+                        readVersion);
+                return Optional.empty();
+            }
+
+            FileStatus latestCRCFile = crcFilesList.get(crcFilesList.size() - 1);
+            return readChecksumFile(engine, new Path(latestCRCFile.getPath()));
+        } catch (Exception e) {
+            logger.warn("Failed to list checksum files from {}", listFrom, e);
+            return Optional.empty();
+        }
+
     }
 
-    private static Optional<VersionStats> readChecksumFile(Path filePath, Engine engine) {
-        try {
-            FileStatus fs = FileStatus.of(filePath.toString(), 0 /* size */, 0 /* modTime */);
-            try (CloseableIterator<ColumnarBatch> iter = engine.getJsonHandler().readJsonFiles(
-                singletonCloseableIterator(fs),
-                VersionStats.FULL_SCHEMA,
-                Optional.empty())
-            ) {
-                // We do this instead of iterating through the rows or using getSingularRow so we
-                // can use the existing fromColumnVector methods in Protocol, Metadata, Format etc
-                if (!iter.hasNext()) {
-                    throw new RuntimeException("Expected at least one batch returned");
-                }
-                ColumnarBatch batch = iter.next();
-
-                if (batch.getSize() != 1) {
-                    throw new RuntimeException("Expected a batch of size 1");
-                }
-                return Optional.of(VersionStats.fromColumnarBatch(batch, 0, engine));
+    private static Optional<VersionStats> readChecksumFile(Engine engine, Path filePath) {
+        try (CloseableIterator<ColumnarBatch> iter = engine.getJsonHandler()
+                .readJsonFiles(
+                        singletonCloseableIterator(FileStatus.of(filePath.toString())),
+                        VersionStats.FULL_SCHEMA,
+                        Optional.empty())) {
+            // We do this instead of iterating through the rows or using `getSingularRow` so we
+            // can use the existing fromColumnVector methods in Protocol, Metadata, Format etc
+            if (!iter.hasNext()) {
+                logger.warn("Checksum file is empty: {}", filePath);
+                return Optional.empty();
             }
+
+            ColumnarBatch batch = iter.next();
+            if (batch.getSize() != 1) {
+                String msg = "Expected exactly one row in the checksum file {}, found {} rows";
+                logger.warn(msg, filePath, batch.getSize());
+                return Optional.empty();
+            }
+
+            long crcVersion = FileNames.checksumVersion(filePath);
+
+            VersionStats versionStats = fromColumnarBatch(engine, crcVersion, batch, 0 /* rowId */);
+            if (versionStats.getMetadata() == null || versionStats.getProtocol() == null) {
+                logger.warn("Invalid checksum file missing protocol and/or metadata: {}", filePath);
+                return Optional.empty();
+            }
+            return Optional.of(versionStats);
         } catch (Exception e) {
             // This can happen when the version does not have a checksum file
-            // TODO log that we saw an exception
+            logger.warn("Failed to read checksum file {}", filePath, e);
             return Optional.empty();
         }
     }
