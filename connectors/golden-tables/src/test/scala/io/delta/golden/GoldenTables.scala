@@ -1235,6 +1235,42 @@ class GoldenTables extends QueryTest with SharedSparkSession {
     }
   }
 
+  generateGoldenTable("decimal-various-scale-precision") { tablePath =>
+    val schema = StructType(
+      StructField("decimal_18_3_Key", DecimalType(18, 3), nullable = true) ::
+        StructField("decimal_18_3_Value", DecimalType(18, 3), nullable = true) ::
+        StructField("decimal_28_3_Key", DecimalType(28, 3), nullable = true) ::
+        StructField("decimal_28_3_Value", DecimalType(28, 3), nullable = true) ::
+        StructField("decimal_38_3_Key", DecimalType(38, 3), nullable = true) ::
+        StructField("decimal_38_3_Value", DecimalType(38, 3), nullable = true) :: Nil
+    )
+
+    val row1 = Row(
+      BigDecimal("12345678.009").setScale(3, BigDecimal.RoundingMode.HALF_UP),
+      BigDecimal("12345678.009").setScale(3, BigDecimal.RoundingMode.HALF_UP),
+      BigDecimal("-123456780000.123").setScale(3, BigDecimal.RoundingMode.HALF_UP),
+      BigDecimal("123445680000.123").setScale(3, BigDecimal.RoundingMode.HALF_UP),
+      BigDecimal("12345678901000.123").setScale(3, BigDecimal.RoundingMode.HALF_UP),
+      BigDecimal("12345678901000.123").setScale(3, BigDecimal.RoundingMode.HALF_UP)
+    )
+
+    val row2 = Row(
+      BigDecimal("12345678901234.568").setScale(3, BigDecimal.RoundingMode.HALF_UP),
+      BigDecimal("-12345678901234.568").setScale(3, BigDecimal.RoundingMode.HALF_UP),
+      BigDecimal("12345678901200123.456").setScale(3, BigDecimal.RoundingMode.HALF_UP),
+      BigDecimal("-12345678901200123.456").setScale(3, BigDecimal.RoundingMode.HALF_UP),
+      BigDecimal("321245678901200000001.456").setScale(3, BigDecimal.RoundingMode.HALF_UP),
+      BigDecimal("32124567890120000000.456").setScale(3, BigDecimal.RoundingMode.HALF_UP)
+    )
+
+    val rows = Seq(row1, row2)
+    spark.createDataFrame(spark.sparkContext.parallelize(rows), schema)
+      .repartition(1)
+      .write
+      .format("delta")
+      .save(tablePath)
+  }
+
   for (parquetFormat <- Seq("v1", "v2")) {
     // PARQUET_1_0 doesn't support dictionary encoding for FIXED_LEN_BYTE_ARRAY (only PARQUET_2_0)
     generateGoldenTable(s"parquet-decimal-dictionaries-$parquetFormat") { tablePath =>
