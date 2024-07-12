@@ -17,6 +17,7 @@
 package io.delta.kernel;
 
 import io.delta.kernel.annotation.Evolving;
+import io.delta.kernel.data.Row;
 import io.delta.kernel.engine.Engine;
 import io.delta.kernel.types.StructType;
 
@@ -51,4 +52,12 @@ public interface Snapshot {
      * @return an instance of {@link ScanBuilder}
      */
     ScanBuilder getScanBuilder(Engine engine);
+
+    /**
+     * Get the streaming state to start streaming from this snapshot version.
+     *
+     * @param engine {@link Engine} instance to use.
+     * @return a {@link Row} representing the streaming state.
+     */
+    Row getStreamingState(Engine engine);
 }

@@ -39,6 +39,12 @@ public class Format {
         return new Format(provider, options);
     }
 
+    public static Format fromRow(Row row) {
+        return new Format(
+                row.getString(0),
+                row.isNullAt(1) ? Collections.emptyMap() : toJavaMap(row.getMap(1)));
+    }
+
     public static final StructType FULL_SCHEMA = new StructType()
         .add("provider", StringType.STRING, false /* nullable */)
         .add("options",

@@ -20,6 +20,7 @@ import java.util.Optional;
 
 import io.delta.kernel.ScanBuilder;
 import io.delta.kernel.Snapshot;
+import io.delta.kernel.data.Row;
 import io.delta.kernel.engine.Engine;
 import io.delta.kernel.types.StructType;
 
@@ -80,6 +81,11 @@ public class SnapshotImpl implements Snapshot {
             getSchema(engine),
             logReplay, engine
         );
+    }
+
+    @Override
+    public Row getStreamingState(Engine engine) {
+        return metadata.toRow();
     }
 
     public Metadata getMetadata() {

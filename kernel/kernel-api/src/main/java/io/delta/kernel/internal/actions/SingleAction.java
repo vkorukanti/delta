@@ -51,6 +51,15 @@ public class SingleAction {
     // Once we start supporting domain metadata/row tracking enabled tables, we should add the
     // schema for domain metadata fields here.
 
+    /**
+     * Schema to use when reading the changes from the Delta Log. Useful for streaming use cases.
+     */
+    public static StructType CHANGES_SCHEMA = new StructType()
+            .add("add", AddFile.SCHEMA_WITH_STATS)
+            .add("remove", RemoveFile.FULL_SCHEMA)
+            .add("metaData", Metadata.FULL_SCHEMA)
+            .add("protocol", Protocol.FULL_SCHEMA);
+
     // Schema to use when writing out the single action to the Delta Log.
     public static StructType FULL_SCHEMA = new StructType()
             .add("txn", SetTransaction.FULL_SCHEMA)

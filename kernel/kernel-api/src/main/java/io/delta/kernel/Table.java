@@ -18,11 +18,14 @@ package io.delta.kernel;
 import java.io.IOException;
 
 import io.delta.kernel.annotation.Evolving;
+import io.delta.kernel.data.FilteredColumnarBatch;
+import io.delta.kernel.data.Row;
 import io.delta.kernel.engine.Engine;
-import io.delta.kernel.exceptions.CheckpointAlreadyExistsException;
-import io.delta.kernel.exceptions.KernelException;
-import io.delta.kernel.exceptions.TableNotFoundException;
+import io.delta.kernel.exceptions.*;
+import io.delta.kernel.utils.CloseableIterator;
+
 import io.delta.kernel.internal.TableImpl;
+import io.delta.kernel.internal.replay.ActionWrapper;
 
 /**
  * Represents the Delta Lake table for a given path.
@@ -150,4 +153,41 @@ public interface Table {
      */
     void checkpoint(Engine engine, long version)
             throws TableNotFoundException, CheckpointAlreadyExistsException, IOException;
+
+    enum StreamingRemoveHandlingPolicy {
+        /**
+         * When a file is removed from the table, it is not included in the changes returned by
+         * {@link #getChanges(Engine, Row, StreamingRemoveHandlingPolicy, long, long)}
+         */
+        IGNORE_REMOVED_FILES,
+        /**
+         * When a file is removed from the table, an error is thrown by
+         * {@link #getChanges(Engine, Row, StreamingRemoveHandlingPolicy, long, long)}
+         */
+        ERROR_ON_REMOVED_FILES
+    }
+
+    /**
+     * Get the changes between the given {@code startVersion} and {@code endVersion} of the table.
+     *
+     * @param engine {@link Engine} instance to use in Delta Kernel.
+     * @param startVersion
+     * @param endVersion
+     * @return Iterator of {@link FilteredColumnarBatch}. Each row in the columnar batch contains
+     * single item of table. It could be either a new data file is added or a file is removed.
+     * TODO: What about the protocol, metadata, checkpoint and other changes?
+     * Schema of the returned batch is as follows:
+     * <pre>
+     *     struct(
+     *       add: struct(path: string, dataChange: boolean)
+     *       remove: struct(path: string, dataChange: boolean)
+     *     )
+     * </pre>
+     */
+    CloseableIterator<ActionWrapper> getChanges(
+            Engine engine,
+            Row streamingState,
+            StreamingRemoveHandlingPolicy removeHandlingPolicy,
+            long startVersion,
+            long endVersion);
 }

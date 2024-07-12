@@ -57,6 +57,20 @@ public class Metadata {
         );
     }
 
+    public static Metadata fromRow(Engine engine, Row row) {
+        return new Metadata(
+            row.getString(0),
+            Optional.ofNullable(row.isNullAt(1) ? null : row.getString(1)),
+            Optional.ofNullable(row.isNullAt(2) ? null : row.getString(2)),
+            Format.fromRow(row.getStruct(3)),
+            row.getString(4),
+            engine.getJsonHandler().deserializeStructType(row.getString(4)),
+            row.getArray(5),
+            Optional.ofNullable(row.isNullAt(6) ? null: row.getLong(6)),
+            row.getMap(7)
+        );
+    }
+
     public static final StructType FULL_SCHEMA = new StructType()
         .add("id", StringType.STRING, false /* nullable */)
         .add("name", StringType.STRING, true /* nullable */)
