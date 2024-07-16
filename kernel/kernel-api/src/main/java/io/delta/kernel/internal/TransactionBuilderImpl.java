@@ -127,6 +127,7 @@ public class TransactionBuilderImpl implements TransactionBuilder {
 
       if (!newProperties.isEmpty()) {
         shouldUpdateMetadata = true;
+        getPropertiesWithDependentFeaturesEnabled(newProperties, metadata);
         metadata = metadata.withNewConfiguration(newProperties);
       }
 
@@ -259,5 +260,22 @@ public class TransactionBuilderImpl implements TransactionBuilder {
         DEFAULT_WRITE_VERSION,
         null /* readerFeatures */,
         null /* writerFeatures */);
+  }
+
+  /**
+   * Some features require their pre-requisite features to not only be present in the protocol but
+   * also be enabled. This method sets the flags required to enable these pre-requisite features.
+   */
+  private void getPropertiesWithDependentFeaturesEnabled(
+      Map<String, String> changedProperties, Metadata oldMetadata) {
+    if (changedProperties.containsKey(TableConfig.COORDINATED_COMMITS_COORDINATOR_NAME.getKey())) {
+      // coordinated-commits requires ICT to be enabled as per the spec.
+      // If ICT is just in Protocol and not in Metadata,
+      // then it is in a 'supported' state but not enabled.
+      // In order to enable ICT, we have to set the table property in Metadata.
+      if (!TableConfig.IN_COMMIT_TIMESTAMPS_ENABLED.fromMetadata(oldMetadata)) {
+        changedProperties.put(TableConfig.IN_COMMIT_TIMESTAMPS_ENABLED.getKey(), "true");
+      }
+    }
   }
 }

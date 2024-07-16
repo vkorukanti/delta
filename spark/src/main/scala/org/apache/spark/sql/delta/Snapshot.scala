@@ -292,11 +292,7 @@ class Snapshot(
 
   /**
    * [[CommitCoordinatorClient]] for the given delta table as of this snapshot.
-   * - This should not be None when a coordinator has been configured for this table. However, if
-   *   the configured coordinator implementation has not been registered, this will be None. In such
-   *   cases, the user will see potentially stale reads for the table. For strict enforcement of
-   *   coordinated commits, the user can set the configuration
-   *   [[DeltaSQLConf.COORDINATED_COMMITS_IGNORE_MISSING_COORDINATOR_IMPLEMENTATION]] to false.
+   * - This must be present when coordinated commits is enabled.
    * - This must be None when coordinated commits is disabled.
    */
   val tableCommitCoordinatorClientOpt: Option[TableCommitCoordinatorClient] = {
@@ -319,22 +315,22 @@ class Snapshot(
    */
   def getTableCommitCoordinatorForWrites: Option[TableCommitCoordinatorClient] = {
     val coordinatorOpt = tableCommitCoordinatorClientOpt
-      val coordinatorName =
-        DeltaConfigs.COORDINATED_COMMITS_COORDINATOR_NAME.fromMetaData(metadata)
-      if (coordinatorName.isDefined && coordinatorOpt.isEmpty) {
-        recordDeltaEvent(
-          deltaLog,
-          CoordinatedCommitsUsageLogs.COMMIT_COORDINATOR_MISSING_IMPLEMENTATION_WRITE,
-          data = Map(
-            "commitCoordinatorName" -> coordinatorName.get,
-            "registeredCommitCoordinators" ->
-              CommitCoordinatorProvider.getRegisteredCoordinatorNames.mkString(", "),
-            "readVersion" -> version.toString
-          )
+    val coordinatorName =
+      DeltaConfigs.COORDINATED_COMMITS_COORDINATOR_NAME.fromMetaData(metadata)
+    if (coordinatorName.isDefined && coordinatorOpt.isEmpty) {
+      recordDeltaEvent(
+        deltaLog,
+        CoordinatedCommitsUsageLogs.COMMIT_COORDINATOR_MISSING_IMPLEMENTATION_WRITE,
+        data = Map(
+          "commitCoordinatorName" -> coordinatorName.get,
+          "registeredCommitCoordinators" ->
+            CommitCoordinatorProvider.getRegisteredCoordinatorNames.mkString(", "),
+          "readVersion" -> version.toString
         )
-        throw DeltaErrors.unsupportedWritesWithMissingCoordinators(coordinatorName.get)
-      }
-      coordinatorOpt
+      )
+      throw DeltaErrors.unsupportedWritesWithMissingCoordinators(coordinatorName.get)
+    }
+    coordinatorOpt
   }
 
   /** Number of columns to collect stats on for data skipping */
@@ -651,7 +647,6 @@ class Snapshot(
     }
   }
 
-
   protected def emptyDF: DataFrame =
     spark.createDataFrame(spark.sparkContext.emptyRDD[Row], logSchema)
 
@@ -830,12 +825,5 @@ class DummySnapshot(
   override protected lazy val computedState: SnapshotState = initialState(metadata, protocol)
   override protected lazy val getInCommitTimestampOpt: Option[Long] = None
   _computedStateTriggered = true
-
-  // The [[InitialSnapshot]] is not backed by any external commit-coordinator.
-  override val tableCommitCoordinatorClientOpt: Option[TableCommitCoordinatorClient] = None
-
-  // Commit 0 cannot be performed through a commit coordinator.
-  override def getTableCommitCoordinatorForWrites: Option[TableCommitCoordinatorClient] = None
-
   override def timestamp: Long = -1L
 }

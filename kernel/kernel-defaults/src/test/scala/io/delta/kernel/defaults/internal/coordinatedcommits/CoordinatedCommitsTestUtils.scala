@@ -18,7 +18,7 @@ package io.delta.kernel.defaults.internal.coordinatedcommits
 import io.delta.kernel.data.Row
 
 import java.{lang, util}
-import io.delta.storage.commit.{CommitCoordinatorClient, InMemoryCommitCoordinator, Commit => StorageCommit, CommitResponse => StorageCommitResponse, GetCommitsResponse => StorageGetCommitsResponse, TableDescriptor, TableIdentifier, UpdatedActions => StorageUpdatedActions}
+import io.delta.storage.commit.{CommitCoordinatorClient, InMemoryCommitCoordinator, TableDescriptor, TableIdentifier, Commit => StorageCommit, CommitResponse => StorageCommitResponse, GetCommitsResponse => StorageGetCommitsResponse, UpdatedActions => StorageUpdatedActions}
 import io.delta.kernel.defaults.internal.logstore.LogStoreProvider
 import io.delta.kernel.engine.{CommitCoordinatorClientHandler, Engine}
 import io.delta.kernel.internal.actions.{CommitInfo, Format, Metadata, Protocol}
@@ -27,6 +27,8 @@ import io.delta.kernel.internal.util.{CoordinatedCommitsUtils, FileNames, Vector
 import io.delta.kernel.internal.util.VectorUtils.{stringArrayValue, stringVector}
 import io.delta.kernel.utils.CloseableIterator
 import io.delta.kernel.engine.coordinatedcommits.{Commit, CommitResponse, GetCommitsResponse, UpdatedActions}
+import io.delta.kernel.defaults.utils.TestUtils
+import io.delta.kernel.defaults.DeltaTableWriteSuiteBase
 import io.delta.kernel.types.{LongType, StringType, StructType}
 import io.delta.storage.LogStore
 import io.delta.storage.commit.actions.{AbstractMetadata, AbstractProtocol}
@@ -36,8 +38,13 @@ import org.apache.hadoop.fs.Path
 import java.util.{Collections, Optional}
 import java.util.concurrent.atomic.AtomicInteger
 import scala.collection.JavaConverters._
+import io.delta.kernel.internal.TableConfig._
+import io.delta.kernel.utils.CloseableIterable.emptyIterable
+import org.apache.spark.sql.delta.coordinatedcommits.TrackingInMemoryCommitCoordinatorBuilder
 
-trait CoordinatedCommitsTestUtils {
+import scala.collection.immutable.Seq
+
+trait CoordinatedCommitsTestUtils extends DeltaTableWriteSuiteBase with TestUtils {
 
   val hadoopConf = new Configuration()
   def getEmptyMetadata: Metadata = {
@@ -155,6 +162,60 @@ trait CoordinatedCommitsTestUtils {
     engine.getJsonHandler.parseJson(
       stringVector(input.asJava), getVersionTimestampSchema, Optional.empty()).getRows
   }
+
+  def enableCoordinatedCommits(
+    engine: Engine,
+    tablePath: String,
+    commitCoordinator: String,
+    isNewTable: Boolean = false): Unit = {
+    createTxn(
+      engine,
+      tablePath,
+      isNewTable = isNewTable,
+      testSchema,
+      Seq.empty,
+      tableProperties = Map(
+        COORDINATED_COMMITS_COORDINATOR_NAME.getKey -> commitCoordinator,
+        COORDINATED_COMMITS_COORDINATOR_CONF.getKey -> "{}"))
+      .commit(engine, emptyIterable())
+  }
+
+  /** Run the test with different backfill batch sizes: 1, 2, 10, 20 */
+  def testWithDifferentBackfillInterval(
+      testName: String,
+      coordinatorName: String)(f: (String, Engine, Int) => Unit): Unit = {
+    Seq(1, 2, 10, 20).foreach { backfillBatchSize =>
+      val hadoopConf = Map(
+        CommitCoordinatorProvider.getCommitCoordinatorNameConfKey(coordinatorName) ->
+          classOf[TrackingInMemoryCommitCoordinatorBuilder].getName,
+        InMemoryCommitCoordinatorBuilder.BATCH_SIZE_CONF_KEY -> backfillBatchSize.toString)
+      test(s"$testName [Backfill batch size: $backfillBatchSize]") {
+        InMemoryCommitCoordinatorBuilder.clearInMemoryInstances()
+
+        withTempDirAndEngine(
+          (tablePath, engine) => f(tablePath, engine, backfillBatchSize),
+          hadoopConf
+        )
+      }
+    }
+  }
+
+  /** Run the test with different checkpoint interval: 1, 2, 10, 20 */
+  def testWithDifferentCheckpointVersion(
+      testName: String)(f: (String, Engine, Int) => Unit): Unit = {
+    val hadoopConf = Map(
+      CommitCoordinatorProvider.getCommitCoordinatorNameConfKey("tracking-in-memory") ->
+        classOf[TrackingInMemoryCommitCoordinatorBuilder].getName,
+      InMemoryCommitCoordinatorBuilder.BATCH_SIZE_CONF_KEY -> "10")
+    Seq(1, 2, 10, 20).foreach { checkpointInterval =>
+      test(s"$testName [Checkpoint Interval: $checkpointInterval]") {
+        withTempDirAndEngine(
+          (tablePath, engine) => f(tablePath, engine, checkpointInterval),
+          hadoopConf
+        )
+      }
+    }
+  }
 }
 
 case class TrackingInMemoryCommitCoordinatorBuilder(hadoopConf: Configuration)
@@ -178,7 +239,7 @@ object TrackingCommitCoordinatorClient {
   }
 }
 
-class TrackingCommitCoordinatorClient(delegatingCommitCoordinatorClient: InMemoryCommitCoordinator)
+class TrackingCommitCoordinatorClient(delegatingCommitCoordinatorClient: CommitCoordinatorClient)
   extends CommitCoordinatorClient {
 
   def recordOperation[T](op: String)(f: => T): T = {

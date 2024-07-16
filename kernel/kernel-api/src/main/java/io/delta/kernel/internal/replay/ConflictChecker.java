@@ -27,11 +27,13 @@ import static java.lang.String.format;
 import io.delta.kernel.data.ColumnVector;
 import io.delta.kernel.data.ColumnarBatch;
 import io.delta.kernel.engine.Engine;
+import io.delta.kernel.engine.coordinatedcommits.Commit;
 import io.delta.kernel.exceptions.ConcurrentWriteException;
 import io.delta.kernel.internal.*;
 import io.delta.kernel.internal.actions.CommitInfo;
 import io.delta.kernel.internal.actions.DomainMetadata;
 import io.delta.kernel.internal.actions.SetTransaction;
+import io.delta.kernel.internal.snapshot.TableCommitCoordinatorClientHandler;
 import io.delta.kernel.internal.util.DomainMetadataUtils;
 import io.delta.kernel.internal.util.FileNames;
 import io.delta.kernel.utils.CloseableIterator;
@@ -265,23 +267,43 @@ public class ConflictChecker {
   }
 
   private List<FileStatus> getWinningCommitFiles(Engine engine) {
-    String firstWinningCommitFile =
-        deltaFile(snapshot.getLogPath(), snapshot.getVersion(engine) + 1);
+    long startVersion = snapshot.getVersion(engine) + 1;
+    Optional<TableCommitCoordinatorClientHandler> commitCoordinatorClientHandlerOpt =
+        snapshot.getTableCommitCoordinatorClientHandlerOpt(engine);
+    List<Commit> unbackfilledCommits =
+        commitCoordinatorClientHandlerOpt
+            .map(
+                commitCoordinatorClientHandler ->
+                    commitCoordinatorClientHandler.getCommits(startVersion, null).getCommits())
+            .orElse(Collections.emptyList());
+
+    String firstWinningCommitFile = deltaFile(snapshot.getLogPath(), startVersion);
 
     try (CloseableIterator<FileStatus> files =
         wrapEngineExceptionThrowsIO(
             () -> engine.getFileSystemClient().listFrom(firstWinningCommitFile),
             "Listing from %s",
             firstWinningCommitFile)) {
+      long maxDeltaVersionSeen = startVersion - 1;
       // Select all winning transaction commit files.
       List<FileStatus> winningCommitFiles = new ArrayList<>();
       while (files.hasNext()) {
         FileStatus file = files.next();
         if (FileNames.isCommitFile(file.getPath())) {
           winningCommitFiles.add(file);
+          maxDeltaVersionSeen =
+              Math.max(maxDeltaVersionSeen, FileNames.deltaVersion(file.getPath()));
         }
       }
 
+      List<FileStatus> unbackfilledCommitsFiltered = new ArrayList<>();
+      for (Commit commit : unbackfilledCommits) {
+        if (commit.getVersion() > maxDeltaVersionSeen) {
+          unbackfilledCommitsFiltered.add(commit.getFileStatus());
+        }
+      }
+
+      winningCommitFiles.addAll(unbackfilledCommitsFiltered);
       return ensureNoGapsInWinningCommits(winningCommitFiles);
     } catch (FileNotFoundException nfe) {
       // no winning commits. why did we get here?

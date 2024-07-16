@@ -31,6 +31,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.concurrent.TimeUnit;
 
 public class DefaultKernelUtils {
+
   private static final DateTimeFormatter DEFAULT_JSON_TIMESTAMPNTZ_FORMATTER =
       new DateTimeFormatterBuilder()
           .appendPattern("yyyy-MM-dd'T'HH:mm:ss")

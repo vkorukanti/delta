@@ -275,6 +275,10 @@ public final class DeltaErrors {
     return new InvalidConfigurationValueException(key, value, helpMessage);
   }
 
+  public static KernelException concurrentWriteException() {
+    return new ConcurrentWriteException();
+  }
+
   public static KernelException domainMetadataUnsupported() {
     String message =
         "Cannot commit DomainMetadata action(s) because the feature 'domainMetadata' "

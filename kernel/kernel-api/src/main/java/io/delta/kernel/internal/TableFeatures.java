@@ -17,6 +17,7 @@
 package io.delta.kernel.internal;
 
 import static io.delta.kernel.internal.DeltaErrors.*;
+import static io.delta.kernel.internal.TableConfig.COORDINATED_COMMITS_COORDINATOR_NAME;
 import static io.delta.kernel.internal.TableConfig.IN_COMMIT_TIMESTAMPS_ENABLED;
 
 import io.delta.kernel.internal.actions.Metadata;
@@ -35,11 +36,12 @@ public class TableFeatures {
           new HashSet<String>() {
             {
               add("appendOnly");
-              add("inCommitTimestamp");
+              add("inCommitTimestamp-preview");
               add("columnMapping");
               add("typeWidening-preview");
               add("typeWidening");
               add(DOMAIN_METADATA_FEATURE_NAME);
+              add("coordinatedCommits-preview");
             }
           });
 
@@ -100,7 +102,8 @@ public class TableFeatures {
    *   <li>protocol writer version 1.
    *   <li>protocol writer version 2 only with appendOnly feature enabled.
    *   <li>protocol writer version 7 with {@code appendOnly}, {@code inCommitTimestamp}, {@code
-   *       columnMapping}, {@code typeWidening}, {@code domainMetadata} feature enabled.
+   *       columnMapping}, {@code typeWidening}, {@code domainMetadata}, {@code
+   *       coordinatedCommits-preview} features enabled.
    * </ul>
    *
    * @param protocol Table protocol
@@ -205,7 +208,8 @@ public class TableFeatures {
    */
   private static int getMinReaderVersion(String feature) {
     switch (feature) {
-      case "inCommitTimestamp":
+      case "inCommitTimestamp-preview":
+      case "coordinatedCommits-preview":
         return 3;
       default:
         return 1;
@@ -220,7 +224,8 @@ public class TableFeatures {
    */
   private static int getMinWriterVersion(String feature) {
     switch (feature) {
-      case "inCommitTimestamp":
+      case "inCommitTimestamp-preview":
+      case "coordinatedCommits-preview":
         return 7;
       default:
         return 2;
@@ -238,8 +243,14 @@ public class TableFeatures {
   private static boolean metadataRequiresWriterFeatureToBeEnabled(
       Metadata metadata, String feature) {
     switch (feature) {
-      case "inCommitTimestamp":
-        return IN_COMMIT_TIMESTAMPS_ENABLED.fromMetadata(metadata);
+      case "inCommitTimestamp-preview":
+        return IN_COMMIT_TIMESTAMPS_ENABLED.fromMetadata(metadata)
+            ||
+            // TODO: Check Delta-spark and see if it needs other feature enablement.
+            COORDINATED_COMMITS_COORDINATOR_NAME.fromMetadata(metadata).isPresent();
+      case "coordinatedCommits-preview":
+        // TODO: Check Delta-spark and see if it needs other feature enablement.
+        return COORDINATED_COMMITS_COORDINATOR_NAME.fromMetadata(metadata).isPresent();
       default:
         return false;
     }

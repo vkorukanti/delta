@@ -27,7 +27,6 @@ import io.delta.kernel.engine.Engine;
 import io.delta.kernel.exceptions.InvalidTableException;
 import io.delta.kernel.internal.data.GenericRow;
 import io.delta.kernel.internal.fs.Path;
-import io.delta.kernel.internal.util.FileNames;
 import io.delta.kernel.internal.util.VectorUtils;
 import io.delta.kernel.types.*;
 import io.delta.kernel.utils.CloseableIterator;
@@ -188,7 +187,7 @@ public class CommitInfo {
                 new InvalidTableException(
                     dataPath.toString(),
                     String.format(
-                        "This table has the feature inCommitTimestamp "
+                        "This table has the feature inCommitTimestamp-preview "
                             + "enabled which requires the presence of the CommitInfo action "
                             + "in every commit. However, the CommitInfo action is "
                             + "missing from commit version %s.",
@@ -198,7 +197,7 @@ public class CommitInfo {
             new InvalidTableException(
                 dataPath.toString(),
                 String.format(
-                    "This table has the feature inCommitTimestamp "
+                    "This table has the feature inCommitTimestamp-preview "
                         + "enabled which requires the presence of inCommitTimestamp in the "
                         + "CommitInfo action. However, this field has not "
                         + "been set in commit version %s.",
@@ -206,12 +205,9 @@ public class CommitInfo {
   }
 
   /** Get the persisted commit info (if available) for the given delta file. */
-  public static Optional<CommitInfo> getCommitInfoOpt(Engine engine, Path logPath, long version) {
+  public static Optional<CommitInfo> getCommitInfoOpt(Engine engine, String delta, long version) {
     final FileStatus file =
-        FileStatus.of(
-            FileNames.deltaFile(logPath, version), /* path */
-            0, /* size */
-            0 /* modification time */);
+        FileStatus.of(delta, /* path */ 0, /* size */ 0 /* modification time */);
     final StructType COMMITINFO_READ_SCHEMA =
         new StructType().add("commitInfo", CommitInfo.FULL_SCHEMA);
     try (CloseableIterator<ColumnarBatch> columnarBatchIter =

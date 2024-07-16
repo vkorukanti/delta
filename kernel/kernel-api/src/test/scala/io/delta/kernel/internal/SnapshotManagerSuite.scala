@@ -182,7 +182,9 @@ class SnapshotManagerSuite extends AnyFunSuite with MockFileSystemClientUtils {
       startCheckpoint: Optional[java.lang.Long] = Optional.empty(),
       versionToLoad: Optional[java.lang.Long] = Optional.empty(),
       v2CheckpointSpec: Seq[(Long, Boolean, Int)] = Seq.empty,
-      unbackfilledDeltaVersions: Seq[Long] = Seq.empty): Unit = {
+      unbackfilledDeltaVersions: Seq[Long] = Seq.empty,
+      tableCommitCoordinatorClientHandlerOpt:
+        Optional[TableCommitCoordinatorClientHandler] = Optional.empty()): Unit = {
     val deltas = deltaFileStatuses(deltaVersions)
     val singularCheckpoints = singularCheckpointFileStatuses(checkpointVersions)
     val multiCheckpoints = multiCheckpointFileStatuses(multiCheckpointVersions, numParts)
@@ -226,8 +228,7 @@ class SnapshotManagerSuite extends AnyFunSuite with MockFileSystemClientUtils {
           new MockSidecarJsonHandler(expectedSidecars)),
         Optional.empty(),
         versionToLoad,
-        Optional.of(
-          new MockTableCommitCoordinatorClientHandler(logPath, unbackfilledDeltaVersions))
+        tableCommitCoordinatorClientHandlerOpt
       )
       assert(logSegmentOpt.isPresent())
 
@@ -863,21 +864,25 @@ class SnapshotManagerSuite extends AnyFunSuite with MockFileSystemClientUtils {
   /* ------------------- COORDINATED COMMITS TESTS ------------------ */
   test("read with getCommits return empty lists") {
     testWithCheckpoints(
-      (0L to 50L), /* deltaVersions */
-      Seq(10, 30, 50), /* checkpointVersions */
-      Seq(20, 40), /* multiCheckpointVersions */
-      numParts = 5 /* numParts */
+      (0L to 50L),
+      Seq(10, 30, 50),
+      Seq(20, 40),
+      numParts = 5,
+      tableCommitCoordinatorClientHandlerOpt =
+        Optional.of(new MockTableCommitCoordinatorClientHandler(logPath))
     )
   }
 
   test("read with getCommits return a list with serveral unbackfilled commits") {
     val unbackfilledCommits1 = Seq(51L)
     testWithCheckpoints(
-      (0L to 50L), /* deltaVersions */
-      Seq(10, 30, 50), /* checkpointVersions */
-      Seq(20, 40), /* multiCheckpointVersions */
-      numParts = 5, /* numParts */
-      unbackfilledDeltaVersions = unbackfilledCommits1
+      (0L to 50L),
+      Seq(10, 30, 50),
+      Seq(20, 40),
+      numParts = 5,
+      unbackfilledDeltaVersions = unbackfilledCommits1,
+      tableCommitCoordinatorClientHandlerOpt =
+        Optional.of(new MockTableCommitCoordinatorClientHandler(logPath, unbackfilledCommits1))
     )
 
     val unbackfilledCommits2 = 51L to 60L
@@ -886,7 +891,9 @@ class SnapshotManagerSuite extends AnyFunSuite with MockFileSystemClientUtils {
       Seq(10, 30, 50), /* checkpointVersions */
       Seq(20, 40), /* multiCheckpointVersions */
       numParts = 5, /* numParts */
-      unbackfilledDeltaVersions = unbackfilledCommits2
+      unbackfilledDeltaVersions = unbackfilledCommits2,
+      tableCommitCoordinatorClientHandlerOpt =
+        Optional.of(new MockTableCommitCoordinatorClientHandler(logPath, unbackfilledCommits2))
     )
 
     val unbackfilledCommits3 = 25L to 60L
@@ -895,7 +902,9 @@ class SnapshotManagerSuite extends AnyFunSuite with MockFileSystemClientUtils {
       Seq(10, 30, 50), /* checkpointVersions */
       Seq(20, 40), /* multiCheckpointVersions */
       numParts = 5, /* numParts */
-      unbackfilledDeltaVersions = unbackfilledCommits3
+      unbackfilledDeltaVersions = unbackfilledCommits3,
+      tableCommitCoordinatorClientHandlerOpt =
+        Optional.of(new MockTableCommitCoordinatorClientHandler(logPath, unbackfilledCommits3))
     )
   }
 
