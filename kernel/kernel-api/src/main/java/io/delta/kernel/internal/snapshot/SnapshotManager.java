@@ -160,6 +160,16 @@ public class SnapshotManager {
     if (snapshotVer != version) {
       throw DeltaErrors.versionAfterLatestCommit(tablePath.toString(), version, snapshotVer);
     }
+
+    List<FileStatus> snapshotDeltas = snapshot.getLogSegment().deltas;
+    if (!snapshotDeltas.isEmpty()) {
+      checkArgument(
+          Objects.equals(
+              FileNames.deltaVersion(snapshotDeltas.get(snapshotDeltas.size() - 1).getPath()),
+              version),
+          format("Did not get the last delta file version %s to compute Snapshot", version));
+    }
+
     return snapshot;
   }
 
@@ -198,6 +208,22 @@ public class SnapshotManager {
     logger.info("{}: Starting checkpoint for version: {}", tablePath, version);
     // Get the snapshot corresponding the version
     SnapshotImpl snapshot = (SnapshotImpl) getSnapshotAt(engine, version);
+
+    // With Coordinated-Commits, commit files are not guaranteed to be backfilled immediately in
+    // the _delta_log dir. While it is possible to compute a checkpoint file without
+    // backfilling, writing the checkpoint file in the log directory before backfilling the
+    // relevant commits will leave gaps in the dir structure. This can cause issues for readers
+    // that are not communicating with the CommitCoordinator.
+    //
+    // Sample directory structure with a gap if we don't backfill commit files:
+    // _delta_log/
+    //   _commits/
+    //     00017.$uuid.json
+    //     00018.$uuid.json
+    //   00015.json
+    //   00016.json
+    //   00018.checkpoint.parquet
+    snapshot.ensureCommitFilesBackfilled(engine);
 
     // Check if writing to the given table protocol version/features is supported in Kernel
     validateWriteSupportedTable(
@@ -319,22 +345,22 @@ public class SnapshotManager {
    * versionToLoad and at least one delta file exists, throws an exception that the state is not
    * reconstructable.
    *
-   * @param startVersion the version to start. Inclusive.
-   * @param versionToLoad the optional parameter to set the max version we should return. Inclusive.
-   *     Must be >= startVersion if provided.
-   *     <p>This method lists all delta files and checkpoint files with the following steps:
-   *     <ul>
-   *       <li>When the table is set up with a commit coordinator, retrieve any files that haven't
-   *           been backfilled by initiating a request to the commit coordinator service. If the
-   *           table is not configured to use a commit coordinator, this list will be empty.
-   *       <li>Collect commit files (aka backfilled commits) and checkpoint files by listing the
-   *           contents of the Delta log on storage.
-   *       <li>Filter un-backfilled files to exclude overlapping delta files collected from both
-   *           commit-coordinator and file-system to avoid duplicates.
-   *       <li>Merge and return the backfilled files and filtered un-backfilled files.
-   *     </ul>
-   *     <p>*Note*: If table is a coordinated-commits table, the commit-coordinator client MUST be
-   *     passed to correctly list the commits.
+   * <p>This method lists all delta files and checkpoint files with the following steps:
+   *
+   * <ul>
+   *   <li>When the table is set up with a commit coordinator, retrieve any files that haven't been
+   *       backfilled by initiating a request to the commit coordinator service. If the table is not
+   *       configured to use a commit coordinator, this list will be empty.
+   *   <li>Collect commit files (aka backfilled commits) and checkpoint files by listing the
+   *       contents of the Delta log on storage.
+   *   <li>Filter un-backfilled files to exclude overlapping delta files collected from both
+   *       commit-coordinator and file-system to avoid duplicates.
+   *   <li>Merge and return the backfilled files and filtered un-backfilled files.
+   * </ul>
+   *
+   * <p>*Note*: If table is a coordinated-commits table, the commit-coordinator client MUST be
+   * passed to correctly list the commits.
+   *
    * @param startVersion the version to start. Inclusive.
    * @param versionToLoad the optional parameter to set the max version we should return. Inclusive.
    *     Must be >= startVersion if provided.
@@ -352,9 +378,8 @@ public class SnapshotManager {
         v ->
             checkArgument(
                 v >= startVersion,
-                "versionToLoad=%s provided is less than startVersion=%s",
-                v,
-                startVersion));
+                format("versionToLoad=%s provided is less than startVersion=%s", v, startVersion)));
+
     logger.debug(
         "startVersion: {}, versionToLoad: {}, coordinated commits enabled: {}",
         startVersion,
@@ -388,6 +413,7 @@ public class SnapshotManager {
                 if (FileNames.isCheckpointFile(fileName) && fileStatus.getSize() == 0) {
                   continue;
                 }
+
                 // Take files until the version we want to load
                 final boolean versionWithinRange =
                     versionToLoad
@@ -416,6 +442,7 @@ public class SnapshotManager {
                       Math.max(
                           maxDeltaVersionSeen.get(), FileNames.deltaVersion(fileStatus.getPath())));
                 }
+
                 output.add(fileStatus);
               }
 
@@ -571,10 +598,10 @@ public class SnapshotManager {
   }
 
   /**
-   * Get a list of files that can be used to compute a Snapshot at or before version
-   * `versionToLoad`, If `versionToLoad` is not provided, will generate the list of files that are
-   * needed to load the latest version of the Delta table. This method also performs checks to
-   * ensure that the delta files are contiguous.
+   * Get a list of files that can be used to compute a Snapshot at version `versionToLoad`, If
+   * `versionToLoad` is not provided, will generate the list of files that are needed to load the
+   * latest version of the Delta table. This method also performs checks to ensure that the delta
+   * files are contiguous.
    *
    * @param startCheckpoint A potential start version to perform the listing of the DeltaLog,
    *     typically that of a known checkpoint. If this version's not provided, we will start listing

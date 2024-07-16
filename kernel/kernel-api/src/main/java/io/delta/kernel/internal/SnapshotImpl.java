@@ -31,11 +31,17 @@ import io.delta.kernel.internal.replay.CreateCheckpointIterator;
 import io.delta.kernel.internal.replay.LogReplay;
 import io.delta.kernel.internal.snapshot.LogSegment;
 import io.delta.kernel.internal.snapshot.TableCommitCoordinatorClientHandler;
+import io.delta.kernel.internal.util.FileNames;
 import io.delta.kernel.internal.util.VectorUtils;
 import io.delta.kernel.types.StructType;
+import io.delta.kernel.utils.CloseableIterator;
+import io.delta.kernel.utils.FileStatus;
+import java.io.IOException;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /** Implementation of {@link Snapshot}. */
 public class SnapshotImpl implements Snapshot {
@@ -90,7 +96,7 @@ public class SnapshotImpl implements Snapshot {
     if (IN_COMMIT_TIMESTAMPS_ENABLED.fromMetadata(metadata)) {
       if (!inCommitTimestampOpt.isPresent()) {
         Optional<CommitInfo> commitInfoOpt =
-            CommitInfo.getCommitInfoOpt(engine, logPath, logSegment.version);
+            CommitInfo.getCommitInfoOpt(engine, getDeltaFile(), logSegment.version);
         inCommitTimestampOpt =
             Optional.of(
                 CommitInfo.getRequiredInCommitTimestamp(
@@ -193,5 +199,69 @@ public class SnapshotImpl implements Snapshot {
                   logPath.toString(),
                   COORDINATED_COMMITS_TABLE_CONF.fromMetadata(metadata));
             });
+  }
+
+  /**
+   * Ensures that commit files are backfilled up to the current version in the snapshot.
+   *
+   * <p>This method checks if there are any un-backfilled versions up to the current version and
+   * triggers the backfilling process using the commit coordinator. It verifies that the delta file
+   * for the current version exists after the backfilling process.
+   *
+   * @param engine the engine to use for IO operations
+   * @throws IllegalStateException if the delta file for the current version is not found after
+   *     backfilling.
+   */
+  public void ensureCommitFilesBackfilled(Engine engine) throws IOException {
+    Optional<TableCommitCoordinatorClientHandler> tableHandlerOpt =
+        getTableCommitCoordinatorClientHandlerOpt(engine);
+    if (!tableHandlerOpt.isPresent()) {
+      return;
+    }
+    TableCommitCoordinatorClientHandler tableHandler = tableHandlerOpt.get();
+
+    long minUnbackfilledVersion = getMinUnbackfilledVersion();
+    if (minUnbackfilledVersion <= version) {
+      tableHandler.backfillToVersion(version, minUnbackfilledVersion - 1);
+      String expectedBackfilledDeltaFile = FileNames.deltaFile(logPath, version);
+      try (CloseableIterator<FileStatus> files =
+          engine.getFileSystemClient().listFrom(expectedBackfilledDeltaFile)) {
+        if (!files.hasNext() || !files.next().getPath().equals(expectedBackfilledDeltaFile)) {
+          throw new IllegalStateException(
+              "Backfilling of commit files failed. "
+                  + "Expected delta file "
+                  + expectedBackfilledDeltaFile
+                  + " not found.");
+        }
+      }
+    }
+  }
+
+  private String getDeltaFile() {
+    Map<Long, String> uuids = getUuids();
+    return Optional.ofNullable(uuids.get(version))
+        .map(
+            uuid -> FileNames.unbackfilledDeltaFile(logPath, version, Optional.of(uuid)).toString())
+        .orElseGet(() -> FileNames.deltaFile(logPath, version));
+  }
+
+  private Map<Long, String> getUuids() {
+    Map<Long, String> uuids = new HashMap<>();
+    for (FileStatus delta : logSegment.deltas) {
+      FileNames.getUnbackfilledDeltaFile(new Path(delta.getPath()))
+          .ifPresent(
+              pathVersionUuid ->
+                  uuids.put(pathVersionUuid.getVersion(), pathVersionUuid.getUuidString()));
+    }
+    return uuids;
+  }
+
+  private long getMinUnbackfilledVersion() {
+    Set<Long> uuidsKey = getUuids().keySet();
+    if (uuidsKey.isEmpty()) {
+      return version + 1;
+    } else {
+      return uuidsKey.stream().min(Long::compareTo).get();
+    }
   }
 }

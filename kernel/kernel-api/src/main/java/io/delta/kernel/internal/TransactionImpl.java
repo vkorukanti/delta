@@ -145,6 +145,7 @@ public class TransactionImpl implements Transaction {
       CommitInfo attemptCommitInfo = generateCommitAction(engine);
       updateMetadataWithICTIfRequired(
           engine, attemptCommitInfo.getInCommitTimestamp(), readSnapshot.getVersion(engine));
+
       int numRetries = 0;
       do {
         logger.info("Committing transaction as version = {}.", commitAsVersion);

@@ -77,7 +77,7 @@ class InCommitTimestampSuite extends DeltaTableWriteSuiteBase {
       assert(ver0Snapshot.getTimestamp(engine) === beforeCommitAttemptStartTime + 1)
       assert(
         getInCommitTimestamp(engine, table, version = 0).get === ver0Snapshot.getTimestamp(engine))
-      assertHasWriterFeature(ver0Snapshot, "inCommitTimestamp")
+      assertHasWriterFeature(ver0Snapshot, "inCommitTimestamp-preview")
     }
   }
 
@@ -106,7 +106,7 @@ class InCommitTimestampSuite extends DeltaTableWriteSuiteBase {
         expectedValue = true)
 
       val ver1Snapshot = table.getLatestSnapshot(engine).asInstanceOf[SnapshotImpl]
-      assertHasWriterFeature(ver1Snapshot, "inCommitTimestamp")
+      assertHasWriterFeature(ver1Snapshot, "inCommitTimestamp-preview")
       assert(ver1Snapshot.getTimestamp(engine) > ver0Snapshot.getTimestamp(engine))
       assert(
         getInCommitTimestamp(engine, table, version = 1).get === ver1Snapshot.getTimestamp(engine))
@@ -168,7 +168,7 @@ class InCommitTimestampSuite extends DeltaTableWriteSuiteBase {
       assert(ex.getMessage.contains(String.format(
         "This table has the feature %s enabled which requires the presence of the " +
           "CommitInfo action in every commit. However, the CommitInfo action is " +
-          "missing from commit version %s.", "inCommitTimestamp", "0")))
+          "missing from commit version %s.", "inCommitTimestamp-preview", "0")))
     }
   }
 
@@ -189,7 +189,7 @@ class InCommitTimestampSuite extends DeltaTableWriteSuiteBase {
           Optional.empty())
       assert(columnarBatches.hasNext)
       val rows = columnarBatches.next().getRows
-      val commitInfoOpt = CommitInfo.getCommitInfoOpt(engine, logPath, 0)
+      val commitInfoOpt = CommitInfo.getCommitInfoOpt(engine, FileNames.deltaFile(logPath, 0), 0)
       assert(commitInfoOpt.isPresent)
       val commitInfo = commitInfoOpt.get
       commitInfo.setInCommitTimestamp(Optional.empty())
@@ -214,7 +214,7 @@ class InCommitTimestampSuite extends DeltaTableWriteSuiteBase {
       assert(ex.getMessage.contains(String.format(
         "This table has the feature %s enabled which requires the presence of " +
           "inCommitTimestamp in the CommitInfo action. However, this field has not " +
-          "been set in commit version %s.", "inCommitTimestamp", "0")))
+          "been set in commit version %s.", "inCommitTimestamp-preview", "0")))
     }
   }
 
@@ -295,7 +295,7 @@ class InCommitTimestampSuite extends DeltaTableWriteSuiteBase {
         expectedValue = true)
       val protocol = getProtocolActionFromCommit(engine, table, 0)
       assert(protocol.isDefined)
-      assert(VectorUtils.toJavaList(protocol.get.getArray(3)).contains("inCommitTimestamp"))
+      assert(VectorUtils.toJavaList(protocol.get.getArray(3)).contains("inCommitTimestamp-preview"))
 
       setTablePropAndVerify(
         engine = engine,
@@ -345,9 +345,10 @@ class InCommitTimestampSuite extends DeltaTableWriteSuiteBase {
           "\"name\":\"id\",\"type\":\"integer\",\"nullable\":true," +
           "\"metadata\":{}}]}', " +
           "partitionColumns=List(), createdTime=Optional[%s], " +
-          "configuration={delta.inCommitTimestampEnablementTimestamp=%s, " +
-          "delta.enableInCommitTimestamps=true, " +
-          "delta.inCommitTimestampEnablementVersion=1}}",
+          "configuration={" +
+          "delta.enableInCommitTimestamps-preview=true, " +
+          "delta.inCommitTimestampEnablementVersion-preview=1, " +
+          "delta.inCommitTimestampEnablementTimestamp-preview=%s}}",
         metadata.getId,
         metadata.getCreatedTime.get,
         inCommitTimestamp.toString))
@@ -391,7 +392,7 @@ class InCommitTimestampSuite extends DeltaTableWriteSuiteBase {
       verifyWrittenContent(tablePath, testSchema, expData)
       verifyTableProperties(tablePath,
         ListMap(IN_COMMIT_TIMESTAMPS_ENABLED.getKey -> true,
-        "delta.feature.inCommitTimestamp" -> "supported",
+        "delta.feature.inCommitTimestamp-preview" -> "supported",
         IN_COMMIT_TIMESTAMP_ENABLEMENT_TIMESTAMP.getKey
           -> getInCommitTimestamp(engine, table, version = 1).get,
         IN_COMMIT_TIMESTAMP_ENABLEMENT_VERSION.getKey -> 1L),
@@ -406,7 +407,8 @@ class InCommitTimestampSuite extends DeltaTableWriteSuiteBase {
    */
   private def getInCommitTimestamp(engine: Engine, table: Table, version: Long): Option[Long] = {
     val logPath = new Path(table.getPath(engine), "_delta_log")
-    val commitInfoOpt = CommitInfo.getCommitInfoOpt(engine, logPath, version)
+    val commitInfoOpt = CommitInfo.getCommitInfoOpt(
+      engine, FileNames.deltaFile(logPath, version), version)
     if (commitInfoOpt.isPresent && commitInfoOpt.get.getInCommitTimestamp.isPresent) {
       Some(commitInfoOpt.get.getInCommitTimestamp.get)
     } else {
@@ -536,7 +538,7 @@ class InCommitTimestampSuite extends DeltaTableWriteSuiteBase {
       assert(ex.getMessage.contains(String.format(
         "This table has the feature %s enabled which requires the presence of the " +
           "CommitInfo action in every commit. However, the CommitInfo action is " +
-          "missing from commit version %s.", "inCommitTimestamp", "2")))
+          "missing from commit version %s.", "inCommitTimestamp-preview", "2")))
     }
   }
 

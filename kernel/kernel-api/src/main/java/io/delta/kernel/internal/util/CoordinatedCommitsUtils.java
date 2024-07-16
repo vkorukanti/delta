@@ -15,6 +15,12 @@
  */
 package io.delta.kernel.internal.util;
 
+import static io.delta.kernel.internal.TableConfig.COORDINATED_COMMITS_COORDINATOR_CONF;
+import static io.delta.kernel.internal.TableConfig.COORDINATED_COMMITS_COORDINATOR_NAME;
+import static io.delta.kernel.internal.util.Preconditions.checkArgument;
+
+import io.delta.kernel.engine.CommitCoordinatorClientHandler;
+import io.delta.kernel.engine.Engine;
 import io.delta.kernel.engine.coordinatedcommits.actions.AbstractCommitInfo;
 import io.delta.kernel.engine.coordinatedcommits.actions.AbstractMetadata;
 import io.delta.kernel.engine.coordinatedcommits.actions.AbstractProtocol;
@@ -24,6 +30,32 @@ import io.delta.kernel.internal.actions.Protocol;
 import java.util.*;
 
 public class CoordinatedCommitsUtils {
+
+  public static Optional<CommitCoordinatorClientHandler> getCommitCoordinatorClientHandler(
+      Engine engine, Metadata metadata, Protocol protocol) {
+    return COORDINATED_COMMITS_COORDINATOR_NAME
+        .fromMetadata(metadata)
+        .map(
+            commitCoordinatorStr -> {
+              checkArgument(protocol.isFeatureSupported("coordinatedCommits-preview"));
+              return engine.getCommitCoordinatorClientHandler(
+                  commitCoordinatorStr,
+                  COORDINATED_COMMITS_COORDINATOR_CONF.fromMetadata(metadata));
+            });
+  }
+
+  public static Tuple2<Optional<String>, Map<String, String>> getCoordinatedCommitsConfs(
+      Engine engine, Metadata metadata) {
+    Optional<String> coordinatorName = COORDINATED_COMMITS_COORDINATOR_NAME.fromMetadata(metadata);
+    Map<String, String> coordinatorConf;
+    if (coordinatorName.isPresent()) {
+      coordinatorConf = COORDINATED_COMMITS_COORDINATOR_CONF.fromMetadata(metadata);
+    } else {
+      coordinatorConf = new HashMap<>();
+    }
+    return new Tuple2<>(coordinatorName, coordinatorConf);
+  }
+
   public static AbstractMetadata convertMetadataToAbstractMetadata(Metadata metadata) {
     return new AbstractMetadata() {
       @Override

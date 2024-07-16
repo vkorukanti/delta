@@ -26,8 +26,7 @@ import io.delta.kernel.data.FilteredColumnarBatch;
 import io.delta.kernel.engine.Engine;
 import io.delta.kernel.expressions.*;
 import io.delta.kernel.internal.util.Tuple2;
-import io.delta.kernel.types.StructField;
-import io.delta.kernel.types.StructType;
+import io.delta.kernel.types.*;
 import java.util.*;
 
 public class DataSkippingUtils {
@@ -315,6 +314,7 @@ public class DataSkippingUtils {
       case ">=":
         return constructBinaryDataSkippingPredicate(
             ">=", schemaHelper.getMaxColumn(leftCol), rightLit);
+
       default:
         throw new IllegalArgumentException(
             String.format("Unsupported comparator expression %s", comparator));
