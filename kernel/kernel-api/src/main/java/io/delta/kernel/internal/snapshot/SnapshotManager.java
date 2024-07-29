@@ -229,9 +229,7 @@ public class SnapshotManager {
     /**
      * Get an iterator of files in the _delta_log directory starting with the startVersion.
      */
-    private CloseableIterator<FileStatus> listFrom(
-            Engine engine,
-            long startVersion)
+    private CloseableIterator<FileStatus> listFrom(Engine engine, long startVersion)
             throws IOException {
         logger.debug("{}: startVersion: {}", tablePath, startVersion);
         return wrapEngineExceptionThrowsIO(
