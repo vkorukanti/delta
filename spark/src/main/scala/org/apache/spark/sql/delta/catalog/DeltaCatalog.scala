@@ -367,9 +367,9 @@ class DeltaCatalog extends DelegatingCatalogExtension
         )
       } else {
         super.dropTable(ident)
-        val table = createCatalogTable(ident, schema, partitions, properties
-        )
-        BestEffortStagedTable(ident, table, this)
+        createTable(ident, schema, partitions, properties)
+        // Return null so that Spark can fall back to non-atomic CTAS/RTAS.
+        null
       }
     }
 
@@ -393,9 +393,9 @@ class DeltaCatalog extends DelegatingCatalogExtension
           case _: NoSuchDatabaseException => // this is fine
           case _: NoSuchTableException => // this is fine
         }
-        val table = createCatalogTable(ident, schema, partitions, properties
-        )
-        BestEffortStagedTable(ident, table, this)
+        createTable(ident, schema, partitions, properties)
+        // Return null so that Spark can fall back to non-atomic CTAS/RTAS.
+        null
       }
     }
 
@@ -414,9 +414,9 @@ class DeltaCatalog extends DelegatingCatalogExtension
           TableCreationModes.Create
         )
       } else {
-        val table = createCatalogTable(ident, schema, partitions, properties
-        )
-        BestEffortStagedTable(ident, table, this)
+        createTable(ident, schema, partitions, properties)
+        // Return null so that Spark can fall back to non-atomic CTAS/RTAS.
+        null
       }
     }
 
@@ -844,29 +844,6 @@ class DeltaCatalog extends DelegatingCatalogExtension
     }
 
     loadTable(ident)
-  }
-
-  // We want our catalog to handle Delta, therefore for other data sources that want to be
-  // created, we just have this wrapper StagedTable to only drop the table if the commit fails.
-  private case class BestEffortStagedTable(
-      ident: Identifier,
-      table: Table,
-      catalog: TableCatalog) extends StagedTable with SupportsWrite {
-    override def abortStagedChanges(): Unit = catalog.dropTable(ident)
-
-    override def commitStagedChanges(): Unit = {}
-
-    // Pass through
-    override def name(): String = table.name()
-    override def schema(): StructType = table.schema()
-    override def partitioning(): Array[Transform] = table.partitioning()
-    override def capabilities(): util.Set[TableCapability] = table.capabilities()
-    override def properties(): util.Map[String, String] = table.properties()
-
-    override def newWriteBuilder(info: LogicalWriteInfo): WriteBuilder = table match {
-      case supportsWrite: SupportsWrite => supportsWrite.newWriteBuilder(info)
-      case _ => throw DeltaErrors.unsupportedWriteStagedTable(name)
-    }
   }
 }
 

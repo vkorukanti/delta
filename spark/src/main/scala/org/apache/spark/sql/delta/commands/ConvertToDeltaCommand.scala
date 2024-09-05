@@ -237,7 +237,8 @@ abstract class ConvertToDeltaCommandBase(
     // also be updated
     if (isParquetCatalogTable(target)) {
       val catalogTable = target.catalogTable
-      val tableProps = target.properties
+      // TODO: Spark should not put `location`, `provider`,`owner` into the table properties.
+      val tableProps = target.properties - "location" - "provider" - "owner"
       val deltaLogConfig = txn.metadata.configuration
       val mergedConfig = deltaLogConfig ++ tableProps
 
@@ -372,7 +373,9 @@ abstract class ConvertToDeltaCommandBase(
       val metadata = Metadata(
         schemaString = schema.json,
         partitionColumns = partitionFields.fieldNames,
-        configuration = convertProperties.properties ++ targetTable.properties,
+        configuration = convertProperties.properties ++ targetTable.properties
+          // TODO: Spark should not put `location`, `provider`,`owner` into the table properties.
+          - "location" - "provider" - "owner",
         createdTime = Some(System.currentTimeMillis()))
       txn.updateMetadataForNewTable(metadata)
 
