@@ -1569,7 +1569,7 @@ lazy val kafka = (project in file("connectors/kafka"))
     },
     // Generate the package object to provide the version information in runtime.
     Compile / sourceGenerators += Def.task {
-      val file = (Compile / sourceManaged).value / "io" / "delta" / "kernel" / "Meta.java"
+      val file = (Compile / sourceManaged).value / "io" / "delta" / "kernel" / "DeltaKafkaMeta.java"
       IO.write(file,
         s"""/*
            | * Copyright (2024) The Delta Lake Project Authors.
