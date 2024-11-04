@@ -261,9 +261,8 @@ public class TableConfig<T> {
         } else {
           throw DeltaErrors.cannotModifyTableProperty(kv.getKey());
         }
-      } else {
-        throw DeltaErrors.unknownConfigurationException(kv.getKey());
       }
+      // allow unknown properties to be set
     }
     return validatedConfigurations;
   }
