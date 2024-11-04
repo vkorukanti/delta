@@ -139,6 +139,32 @@ class TableChangesSuite extends AnyFunSuite with TestUtils {
         2L -> (start + 40 * minuteInMilliseconds)
       )
 
+
+      val iter = Table.forPath(defaultEngine, tempDir.getCanonicalPath)
+        .asInstanceOf[TableImpl]
+        .getChanges(defaultEngine, 0, 2, Set(DeltaAction.ADD).asJava);
+
+      while (iter.hasNext) {
+        val batch = iter.next()
+        val addsVector = batch.getColumnVector(2)
+
+        val addPathVector = addsVector.getChild(0)
+        for (i <- 0 until addsVector.getSize) {
+          if (!addsVector.isNullAt(i)) {
+            val path = addPathVector.getString(i)
+          }
+        }
+
+        val removesVector = batch.getColumnVector(3)
+        for (i <- 0 until removesVector.getSize) {
+          if (!removesVector.isNullAt(i)) {
+            val removePath = removesVector.getChild(0).getString(i)
+          }
+        }
+
+
+      }
+
       // Check the timestamps are returned correctly
       Table.forPath(defaultEngine, tempDir.getCanonicalPath)
         .asInstanceOf[TableImpl]

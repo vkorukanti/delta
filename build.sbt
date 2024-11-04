@@ -842,12 +842,12 @@ lazy val icebergShaded = (project in file("icebergShaded"))
     skipReleaseSettings,
 
     // Compile, patch and generated Iceberg JARs
-    generateIcebergJarsTask := {
-      import sys.process._
-      val scriptPath = baseDirectory.value / "generate_iceberg_jars.py"
-      // Download iceberg code in `iceberg_src` dir and generate the JARs in `lib` dir
-      Seq("python3", scriptPath.getPath)!
-    },
+//    generateIcebergJarsTask := {
+//      import sys.process._
+//      val scriptPath = baseDirectory.value / "generate_iceberg_jars.py"
+//      // Download iceberg code in `iceberg_src` dir and generate the JARs in `lib` dir
+//      Seq("python3", scriptPath.getPath)!
+//    },
     Compile / unmanagedJars := (Compile / unmanagedJars).dependsOn(generateIcebergJarsTask).value,
     cleanFiles += baseDirectory.value / "iceberg_src",
     cleanFiles += baseDirectory.value / "lib",

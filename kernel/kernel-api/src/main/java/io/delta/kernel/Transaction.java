@@ -32,6 +32,7 @@ import io.delta.kernel.expressions.Literal;
 import io.delta.kernel.internal.DataWriteContextImpl;
 import io.delta.kernel.internal.IcebergCompatV2Utils;
 import io.delta.kernel.internal.actions.AddFile;
+import io.delta.kernel.internal.actions.RemoveFile;
 import io.delta.kernel.internal.actions.SingleAction;
 import io.delta.kernel.internal.fs.Path;
 import io.delta.kernel.types.StructType;
@@ -218,6 +219,24 @@ public interface Transaction {
                   ((DataWriteContextImpl) dataWriteContext).getPartitionValues(),
                   true /* dataChange */);
           return SingleAction.createAddFileSingleAction(addFileRow);
+        });
+  }
+
+  static CloseableIterator<Row> generateRemoveActions(
+      Engine engine,
+      Row transactionState,
+      CloseableIterator<DataFileStatus> fileStatusIter,
+      DataWriteContext dataWriteContext) {
+    URI tableRoot = new Path(getTablePath(transactionState)).toUri();
+    return fileStatusIter.map(
+        dataFileStatus -> {
+          Row removeFileRow =
+              RemoveFile.convertDataFileStatus(
+                  tableRoot,
+                  dataFileStatus,
+                  ((DataWriteContextImpl) dataWriteContext).getPartitionValues(),
+                  true /* dataChange */);
+          return SingleAction.createRemoveFileSingleAction(removeFileRow);
         });
   }
 }
