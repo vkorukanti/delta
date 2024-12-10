@@ -30,8 +30,10 @@ import io.delta.kernel.expressions.Column;
 import io.delta.kernel.internal.actions.*;
 import io.delta.kernel.internal.data.TransactionStateRow;
 import io.delta.kernel.internal.fs.Path;
+import io.delta.kernel.internal.replay.ChecksumReaderWriter;
 import io.delta.kernel.internal.replay.ConflictChecker;
 import io.delta.kernel.internal.replay.ConflictChecker.TransactionRebaseState;
+import io.delta.kernel.internal.replay.VersionStats;
 import io.delta.kernel.internal.util.*;
 import io.delta.kernel.types.StructType;
 import io.delta.kernel.utils.CloseableIterable;
@@ -149,7 +151,14 @@ public class TransactionImpl implements Transaction {
       do {
         logger.info("Committing transaction as version = {}.", commitAsVersion);
         try {
-          return doCommit(engine, commitAsVersion, attemptCommitInfo, dataActions);
+          TransactionCommitResult commitResult =
+              doCommit(engine, commitAsVersion, attemptCommitInfo, dataActions);
+
+          VersionStats versionStats =
+              new VersionStats(commitResult.getVersion(), metadata, protocol);
+          ChecksumReaderWriter.writeChecksumFile(engine, logPath, versionStats);
+
+          return commitResult;
         } catch (FileAlreadyExistsException fnfe) {
           logger.info(
               "Concurrent write detected when committing as version = {}. "

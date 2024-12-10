@@ -206,7 +206,7 @@ public class LogReplay {
     Optional<Long> crcSearchLowerBound = snapshotHint.map(SnapshotHint::getVersion);
 
     Optional<VersionStats> versionStatsOpt =
-        ChecksumReader.getVersionStats(
+        ChecksumReaderWriter.getVersionStats(
             engine, logSegment.logPath, snapshotVersion, crcSearchLowerBound);
 
     if (versionStatsOpt.isPresent()) {

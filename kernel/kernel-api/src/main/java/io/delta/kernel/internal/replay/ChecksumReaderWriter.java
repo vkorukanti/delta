@@ -31,8 +31,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /** Utility method to load protocol and metadata from the Delta log checksum files. */
-public class ChecksumReader {
-  private static final Logger logger = LoggerFactory.getLogger(ChecksumReader.class);
+public class ChecksumReaderWriter {
+  private static final Logger logger = LoggerFactory.getLogger(ChecksumReaderWriter.class);
 
   /**
    * Load the protocol and metadata from the checksum file at the given version. If the checksum
@@ -84,6 +84,21 @@ public class ChecksumReader {
     } catch (Exception e) {
       logger.warn("Failed to list checksum files from {}", listFrom, e);
       return Optional.empty();
+    }
+  }
+
+  public static void writeChecksumFile(Engine engine, Path logPath, VersionStats versionStats) {
+    Path crcFilePath = checksumFile(logPath, versionStats.getVersion());
+    try {
+      engine
+          .getJsonHandler()
+          .writeJsonFileAtomically(
+              crcFilePath.toString(),
+              singletonCloseableIterator(versionStats.toRow()),
+              false /* overwrite */);
+    } catch (Exception e) {
+      // CRC files are optional. Dont' fail the operation if we can't write the CRC file
+      logger.warn("Failed to write checksum file {}", crcFilePath, e);
     }
   }
 

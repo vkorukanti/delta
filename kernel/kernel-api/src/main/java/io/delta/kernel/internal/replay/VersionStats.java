@@ -15,32 +15,49 @@
  */
 package io.delta.kernel.internal.replay;
 
+import static java.util.stream.Collectors.toMap;
+
 import io.delta.kernel.data.ColumnarBatch;
+import io.delta.kernel.data.Row;
 import io.delta.kernel.internal.actions.Metadata;
 import io.delta.kernel.internal.actions.Protocol;
+import io.delta.kernel.internal.data.GenericRow;
+import io.delta.kernel.types.LongType;
 import io.delta.kernel.types.StructType;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.stream.IntStream;
 
 public class VersionStats {
 
   public static VersionStats fromColumnarBatch(long version, ColumnarBatch batch, int rowId) {
     // fromColumnVector already takes care of nulls
-    Protocol protocol = Protocol.fromColumnVector(batch.getColumnVector(PROTOCOL_ORDINAL), rowId);
-    Metadata metadata = Metadata.fromColumnVector(batch.getColumnVector(METADATA_ORDINAL), rowId);
+    Protocol protocol =
+        Protocol.fromColumnVector(
+            batch.getColumnVector(COL_NAME_TO_ORDINAL.get("protocol")), rowId);
+    Metadata metadata =
+        Metadata.fromColumnVector(
+            batch.getColumnVector(COL_NAME_TO_ORDINAL.get("metadata")), rowId);
     return new VersionStats(version, metadata, protocol);
   }
 
   // We can add additional fields later
   public static final StructType FULL_SCHEMA =
-      new StructType().add("protocol", Protocol.FULL_SCHEMA).add("metadata", Metadata.FULL_SCHEMA);
+      new StructType()
+          .add("version", LongType.LONG)
+          .add("protocol", Protocol.FULL_SCHEMA)
+          .add("metadata", Metadata.FULL_SCHEMA);
 
-  private static final int PROTOCOL_ORDINAL = 0;
-  private static final int METADATA_ORDINAL = 1;
+  private static final Map<String, Integer> COL_NAME_TO_ORDINAL =
+      IntStream.range(0, FULL_SCHEMA.length())
+          .boxed()
+          .collect(toMap(i -> FULL_SCHEMA.at(i).getName(), i -> i));
 
   private final long version;
   private final Metadata metadata;
   private final Protocol protocol;
 
-  protected VersionStats(long version, Metadata metadata, Protocol protocol) {
+  public VersionStats(long version, Metadata metadata, Protocol protocol) {
     this.version = version;
     this.metadata = metadata;
     this.protocol = protocol;
@@ -59,5 +76,15 @@ public class VersionStats {
   /** The {@link Protocol} stored in this VersionStats. May be null. */
   public Protocol getProtocol() {
     return protocol;
+  }
+
+  public Row toRow() {
+    Map<Integer, Object> valueMap = new HashMap<>();
+    valueMap.put(COL_NAME_TO_ORDINAL.get("version"), version);
+    valueMap.put(COL_NAME_TO_ORDINAL.get("protocol"), protocol.toRow());
+    valueMap.put(COL_NAME_TO_ORDINAL.get("metadata"), metadata.toRow());
+
+    // any fields not present in the valueMap are considered null
+    return new GenericRow(FULL_SCHEMA, valueMap);
   }
 }
