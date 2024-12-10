@@ -348,6 +348,7 @@ public class SnapshotManager {
       long startVersion,
       Optional<Long> versionToLoad,
       Optional<TableCommitCoordinatorClientHandler> tableCommitHandlerOpt) {
+
     versionToLoad.ifPresent(
         v ->
             checkArgument(
@@ -355,7 +356,7 @@ public class SnapshotManager {
                 "versionToLoad=%s provided is less than startVersion=%s",
                 v,
                 startVersion));
-    logger.debug(
+    logger.info(
         "startVersion: {}, versionToLoad: {}, coordinated commits enabled: {}",
         startVersion,
         versionToLoad,
@@ -368,7 +369,15 @@ public class SnapshotManager {
         getUnbackfilledCommits(tableCommitHandlerOpt, startVersion, versionToLoad);
 
     final AtomicLong maxDeltaVersionSeen = new AtomicLong(startVersion - 1);
+    long startTime = System.currentTimeMillis();
     Optional<CloseableIterator<FileStatus>> listing = listFromOrNone(engine, startVersion);
+    logger.info(
+        "{}: Took {}ms to list delta and checkpoint files starting from version {}",
+        tablePath,
+        System.currentTimeMillis() - startTime,
+        startVersion);
+
+    final long startTime2 = System.currentTimeMillis();
     Optional<List<FileStatus>> resultFromFsListingOpt =
         listing.map(
             fileStatusesIter -> {
@@ -419,12 +428,20 @@ public class SnapshotManager {
                 output.add(fileStatus);
               }
 
+              logger.info(
+                  "{}: Took {}ms to go through delta and checkpoint files starting from "
+                      + "version {}, output size: {}",
+                  tablePath,
+                  System.currentTimeMillis() - startTime2,
+                  startVersion,
+                  output.size());
               return output;
             });
 
     if (!tableCommitHandlerOpt.isPresent()) {
       return resultFromFsListingOpt;
     }
+    logger.info("Unbackfilled commits: {}", unbackfilledCommits.size());
     List<FileStatus> relevantUnbackfilledCommits =
         unbackfilledCommits.stream()
             .filter((commit) -> commit.getVersion() > maxDeltaVersionSeen.get())
