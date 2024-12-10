@@ -1,1 +1,1 @@
-ThisBuild / version := "3.3.0-435b45"
+ThisBuild / version := "3.3.0-f8c6d1"
