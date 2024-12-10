@@ -542,6 +542,7 @@ public class SnapshotManager {
             .orElse(".");
     logger.info("{}: Loading version {} {}", tablePath, initSegment.version, startingFromStr);
 
+    long startTimeMillis = System.currentTimeMillis();
     LogReplay logReplay =
         new LogReplay(
             logPath,
@@ -550,8 +551,12 @@ public class SnapshotManager {
             engine,
             initSegment,
             Optional.ofNullable(latestSnapshotHint.get()));
-
-    long startTimeMillis = System.currentTimeMillis();
+    logger.info(
+        "{}: Took {}ms for P&M {} {}",
+        tablePath,
+        System.currentTimeMillis() - startTimeMillis,
+        initSegment.version,
+        startingFromStr);
 
     assertLogFilesBelongToTable(logPath, initSegment.allLogFilesUnsorted());
 

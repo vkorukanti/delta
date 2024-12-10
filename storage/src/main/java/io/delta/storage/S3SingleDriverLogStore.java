@@ -19,6 +19,7 @@ package io.delta.storage;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InterruptedIOException;
+import java.lang.reflect.Method;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
@@ -108,6 +109,10 @@ public class S3SingleDriverLogStore extends HadoopFileSystemLogStore {
         }
     }
 
+    boolean isDBS3(Class<?> fsClass) {
+        return fsClass.getName().equals("shaded.databricks.org.apache.hadoop.fs.s3a.S3AFileSystem");
+    }
+
     /**
      * List files starting from `resolvedPath` (inclusive) in the same directory, which merges
      * the file system list and the cache list when `useCache` is on, otherwise
@@ -128,7 +133,21 @@ public class S3SingleDriverLogStore extends HadoopFileSystemLogStore {
             // LocalFileSystem and RawLocalFileSystem checks are needed for tests to pass
             fs instanceof LocalFileSystem || fs instanceof RawLocalFileSystem || !enableFastListFrom
         ) {
-            statuses = fs.listStatus(parentPath);
+            if (isDBS3(fs.getClass())) {
+                try {
+                    // Get the Class object
+                    Class<?> clazz = fs.getClass();
+
+                    // Get the Method object
+                    Method listStatusMethod = clazz.getMethod("listStatus", Path.class, Path.class, int.class);
+
+                    statuses = (FileStatus[]) listStatusMethod.invoke(fs, parentPath, resolvedPath, Integer.MAX_VALUE);
+                } catch (Exception e) {
+                    throw new RuntimeException("Failed to get listStatus method from DBS3AFileSystem", e);
+                }
+            } else {
+                statuses = fs.listStatus(parentPath);
+            }
         } else {
             statuses = S3LogStoreUtil.s3ListFromArray(fs, resolvedPath, parentPath);
         }
