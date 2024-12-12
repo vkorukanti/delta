@@ -95,68 +95,75 @@ public class TransactionBuilderImpl implements TransactionBuilder {
 
   @Override
   public Transaction build(Engine engine) {
-    SnapshotImpl snapshot;
+    long start = System.currentTimeMillis();
     try {
-      snapshot = (SnapshotImpl) table.getLatestSnapshot(engine);
-    } catch (TableNotFoundException tblf) {
-      String tablePath = table.getPath(engine);
-      logger.info("Table {} doesn't exist yet. Trying to create a new table.", tablePath);
-      schema.orElseThrow(() -> requiresSchemaForNewTable(tablePath));
-      // Table doesn't exist yet. Create an initial snapshot with the new schema.
-      Metadata metadata = getInitialMetadata();
-      Protocol protocol = getInitialProtocol();
-      LogReplay logReplay = getEmptyLogReplay(engine, metadata, protocol);
-      snapshot = new InitialSnapshot(table.getDataPath(), logReplay, metadata, protocol);
-    }
-
-    boolean isNewTable = snapshot.getVersion(engine) < 0;
-    validate(engine, snapshot, isNewTable);
-
-    boolean shouldUpdateMetadata = false;
-    boolean shouldUpdateProtocol = false;
-    Metadata metadata = snapshot.getMetadata();
-    Protocol protocol = snapshot.getProtocol();
-    if (tableProperties.isPresent()) {
-      Map<String, String> validatedProperties =
-          TableConfig.validateProperties(tableProperties.get());
-      Map<String, String> newProperties =
-          metadata.filterOutUnchangedProperties(validatedProperties);
-
-      ColumnMapping.verifyColumnMappingChange(
-          metadata.getConfiguration(), newProperties, isNewTable);
-
-      if (!newProperties.isEmpty()) {
-        shouldUpdateMetadata = true;
-        metadata = metadata.withNewConfiguration(newProperties);
+      SnapshotImpl snapshot;
+      try {
+        snapshot = (SnapshotImpl) table.getLatestSnapshot(engine);
+      } catch (TableNotFoundException tblf) {
+        String tablePath = table.getPath(engine);
+        logger.info("Table {} doesn't exist yet. Trying to create a new table.", tablePath);
+        schema.orElseThrow(() -> requiresSchemaForNewTable(tablePath));
+        // Table doesn't exist yet. Create an initial snapshot with the new schema.
+        Metadata metadata = getInitialMetadata();
+        Protocol protocol = getInitialProtocol();
+        LogReplay logReplay = getEmptyLogReplay(engine, metadata, protocol);
+        snapshot = new InitialSnapshot(table.getDataPath(), logReplay, metadata, protocol);
       }
 
-      Set<String> newWriterFeatures =
-          TableFeatures.extractAutomaticallyEnabledWriterFeatures(metadata, protocol);
-      if (!newWriterFeatures.isEmpty()) {
-        logger.info("Automatically enabling writer features: {}", newWriterFeatures);
-        shouldUpdateProtocol = true;
-        List<String> oldWriterFeatures = protocol.getWriterFeatures();
-        protocol = protocol.withNewWriterFeatures(newWriterFeatures);
-        List<String> curWriterFeatures = protocol.getWriterFeatures();
-        checkArgument(!Objects.equals(oldWriterFeatures, curWriterFeatures));
-        TableFeatures.validateWriteSupportedTable(
-            protocol, metadata, metadata.getSchema(), table.getPath(engine));
-      }
-    }
+      boolean isNewTable = snapshot.getVersion(engine) < 0;
+      validate(engine, snapshot, isNewTable);
 
-    return new TransactionImpl(
-        isNewTable,
-        table.getDataPath(),
-        table.getLogPath(),
-        snapshot,
-        engineInfo,
-        operation,
-        protocol,
-        metadata,
-        setTxnOpt,
-        shouldUpdateMetadata,
-        shouldUpdateProtocol,
-        table.getClock());
+      boolean shouldUpdateMetadata = false;
+      boolean shouldUpdateProtocol = false;
+      Metadata metadata = snapshot.getMetadata();
+      Protocol protocol = snapshot.getProtocol();
+      if (tableProperties.isPresent()) {
+        Map<String, String> validatedProperties =
+            TableConfig.validateProperties(tableProperties.get());
+        Map<String, String> newProperties =
+            metadata.filterOutUnchangedProperties(validatedProperties);
+
+        ColumnMapping.verifyColumnMappingChange(
+            metadata.getConfiguration(), newProperties, isNewTable);
+
+        if (!newProperties.isEmpty()) {
+          shouldUpdateMetadata = true;
+          metadata = metadata.withNewConfiguration(newProperties);
+        }
+
+        Set<String> newWriterFeatures =
+            TableFeatures.extractAutomaticallyEnabledWriterFeatures(metadata, protocol);
+        if (!newWriterFeatures.isEmpty()) {
+          logger.info("Automatically enabling writer features: {}", newWriterFeatures);
+          shouldUpdateProtocol = true;
+          List<String> oldWriterFeatures = protocol.getWriterFeatures();
+          protocol = protocol.withNewWriterFeatures(newWriterFeatures);
+          List<String> curWriterFeatures = protocol.getWriterFeatures();
+          checkArgument(!Objects.equals(oldWriterFeatures, curWriterFeatures));
+          TableFeatures.validateWriteSupportedTable(
+              protocol, metadata, metadata.getSchema(), table.getPath(engine));
+        }
+      }
+
+      return new TransactionImpl(
+          isNewTable,
+          table.getDataPath(),
+          table.getLogPath(),
+          snapshot,
+          engineInfo,
+          operation,
+          protocol,
+          metadata,
+          setTxnOpt,
+          shouldUpdateMetadata,
+          shouldUpdateProtocol,
+          table.getClock());
+    } finally {
+      logger.info(
+          "IRC Benchmark: Time taken to build transaction: {} ms",
+          System.currentTimeMillis() - start);
+    }
   }
 
   /** Validate the given parameters for the transaction. */

@@ -17,6 +17,7 @@ package io.delta.kernel.internal.checkpoints;
 
 import static io.delta.kernel.internal.DeltaErrors.wrapEngineExceptionThrowsIO;
 import static io.delta.kernel.internal.util.Utils.singletonCloseableIterator;
+import static java.lang.String.format;
 
 import io.delta.kernel.data.ColumnarBatch;
 import io.delta.kernel.data.Row;
@@ -104,7 +105,9 @@ public class Checkpointer {
                 () ->
                     engine
                         .getFileSystemClient()
-                        .listFrom(FileNames.listingPrefix(tableLogPath, searchLowerBound)),
+                        .listFrom(FileNames.listingPrefix(tableLogPath, searchLowerBound))
+                        .timedIterator(
+                            format("IRC Benchmark: Listing files from %s", tableLogPath)),
                 "Listing from %s",
                 FileNames.listingPrefix(tableLogPath, searchLowerBound));
 
@@ -151,8 +154,7 @@ public class Checkpointer {
         currentVersion -= 1000; // search for checkpoint in previous 1000 entries
       } catch (IOException e) {
         String msg =
-            String.format(
-                "Failed to list checkpoint files for version %s in %s.", version, tableLogPath);
+            format("Failed to list checkpoint files for version %s in %s.", version, tableLogPath);
         logger.warn(msg, e);
         return new Tuple2<>(Optional.empty(), numberOfFilesSearched);
       }
@@ -187,18 +189,26 @@ public class Checkpointer {
    */
   public void writeLastCheckpointFile(Engine engine, CheckpointMetaData checkpointMetaData)
       throws IOException {
-    wrapEngineExceptionThrowsIO(
-        () -> {
-          engine
-              .getJsonHandler()
-              .writeJsonFileAtomically(
-                  lastCheckpointFilePath.toString(),
-                  singletonCloseableIterator(checkpointMetaData.toRow()),
-                  true /* overwrite */);
-          return null;
-        },
-        "Writing last checkpoint file at `%s`",
-        lastCheckpointFilePath);
+    long start = System.currentTimeMillis();
+    try {
+      wrapEngineExceptionThrowsIO(
+          () -> {
+            engine
+                .getJsonHandler()
+                .writeJsonFileAtomically(
+                    lastCheckpointFilePath.toString(),
+                    singletonCloseableIterator(checkpointMetaData.toRow()),
+                    true /* overwrite */);
+            return null;
+          },
+          "Writing last checkpoint file at `%s`",
+          lastCheckpointFilePath);
+    } finally {
+      logger.info(
+          "IRC Benchmark: Wrote checkpoint metadata to file {} in {}ms",
+          lastCheckpointFilePath,
+          System.currentTimeMillis() - start);
+    }
   }
 
   /**
@@ -260,7 +270,7 @@ public class Checkpointer {
         return Optional.empty(); // there's no point in retrying
       }
       String msg =
-          String.format(
+          format(
               "Failed to load checkpoint metadata from file %s. "
                   + "It must be in the process of being written. "
                   + "Retrying after 1sec. (current attempt of %s (max 3)",

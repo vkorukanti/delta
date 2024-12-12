@@ -139,6 +139,7 @@ public class TransactionImpl implements Transaction {
   @Override
   public TransactionCommitResult commit(Engine engine, CloseableIterable<Row> dataActions)
       throws ConcurrentWriteException {
+    long currentTimestamp = clock.getTimeMillis();
     try {
       checkState(!closed, "Transaction is already attempted to commit. Create a new transaction.");
 
@@ -154,9 +155,16 @@ public class TransactionImpl implements Transaction {
           TransactionCommitResult commitResult =
               doCommit(engine, commitAsVersion, attemptCommitInfo, dataActions);
 
-          VersionStats versionStats =
-              new VersionStats(commitResult.getVersion(), metadata, protocol);
-          ChecksumReaderWriter.writeChecksumFile(engine, logPath, versionStats);
+          long startTimestamp = clock.getTimeMillis();
+          try {
+            VersionStats versionStats =
+                new VersionStats(commitResult.getVersion(), metadata, protocol);
+            ChecksumReaderWriter.writeChecksumFile(engine, logPath, versionStats);
+          } finally {
+            logger.info(
+                "IRC Benchmark: Took {} ms to write checksum file",
+                clock.getTimeMillis() - startTimestamp);
+          }
 
           return commitResult;
         } catch (FileAlreadyExistsException fnfe) {
@@ -184,6 +192,9 @@ public class TransactionImpl implements Transaction {
         numRetries++;
       } while (numRetries < NUM_TXN_RETRIES);
     } finally {
+      logger.info(
+          "IRC Benchmark: Committing transaction took {} ms",
+          clock.getTimeMillis() - currentTimestamp);
       closed = true;
     }
 
@@ -259,7 +270,16 @@ public class TransactionImpl implements Transaction {
       if (commitAsVersion == 0) {
         // New table, create a delta log directory
         if (!wrapEngineExceptionThrowsIO(
-            () -> engine.getFileSystemClient().mkdirs(logPath.toString()),
+            () -> {
+              long currentTimestamp = clock.getTimeMillis();
+              try {
+                return engine.getFileSystemClient().mkdirs(logPath.toString());
+              } finally {
+                logger.info(
+                    "IRC Benchmark: Took {} ms to create delta log directory",
+                    clock.getTimeMillis() - currentTimestamp);
+              }
+            },
             "Creating directories for path %s",
             logPath)) {
           throw new RuntimeException("Failed to create delta log directory: " + logPath);
@@ -269,13 +289,20 @@ public class TransactionImpl implements Transaction {
       // Write the staged data to a delta file
       wrapEngineExceptionThrowsIO(
           () -> {
-            engine
-                .getJsonHandler()
-                .writeJsonFileAtomically(
-                    FileNames.deltaFile(logPath, commitAsVersion),
-                    dataAndMetadataActions,
-                    false /* overwrite */);
-            return null;
+            long startTimestamp = clock.getTimeMillis();
+            try {
+              engine
+                  .getJsonHandler()
+                  .writeJsonFileAtomically(
+                      FileNames.deltaFile(logPath, commitAsVersion),
+                      dataAndMetadataActions,
+                      false /* overwrite */);
+              return null;
+            } finally {
+              logger.info(
+                  "IRC Benchmark: Took {} ms to write commit file",
+                  clock.getTimeMillis() - startTimestamp);
+            }
           },
           "Write file actions to JSON log file `%s`",
           FileNames.deltaFile(logPath, commitAsVersion));
