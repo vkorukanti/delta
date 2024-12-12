@@ -40,6 +40,8 @@ import java.io.UncheckedIOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Replays a history of actions, resolving them to produce the current state of the table. The
@@ -60,6 +62,8 @@ public class LogReplay {
   //////////////////////////
   // Static Schema Fields //
   //////////////////////////
+
+  private static final Logger logger = LoggerFactory.getLogger(LogReplay.class);
 
   /** Read schema when searching for the latest Protocol and Metadata. */
   public static final StructType PROTOCOL_METADATA_READ_SCHEMA =
@@ -195,122 +199,130 @@ public class LogReplay {
   protected Tuple2<Protocol, Metadata> loadTableProtocolAndMetadata(
       Engine engine, Optional<SnapshotHint> snapshotHint, long snapshotVersion) {
 
-    // Exit early if the hint already has the info we need
-    if (snapshotHint.isPresent() && snapshotHint.get().getVersion() == snapshotVersion) {
-      return new Tuple2<>(snapshotHint.get().getProtocol(), snapshotHint.get().getMetadata());
-    }
+    long time = System.currentTimeMillis();
 
-    // Compute the lower bound for the CRC search
-    // If the snapshot hint is present, we can use it as the lower bound for the CRC search.
-    // TODO: this can be further improved to make the lower bound until the checkpoint version
-    Optional<Long> crcSearchLowerBound = snapshotHint.map(SnapshotHint::getVersion);
-
-    Optional<VersionStats> versionStatsOpt =
-        ChecksumReaderWriter.getVersionStats(
-            engine, logSegment.logPath, snapshotVersion, crcSearchLowerBound);
-
-    if (versionStatsOpt.isPresent()) {
-      // We found the protocol and metadata for the version we are looking for
-      VersionStats versionStats = versionStatsOpt.get();
-      if (versionStats.getVersion() == snapshotVersion) {
-        return new Tuple2<>(versionStats.getProtocol(), versionStats.getMetadata());
+    try {
+      // Exit early if the hint already has the info we need
+      if (snapshotHint.isPresent() && snapshotHint.get().getVersion() == snapshotVersion) {
+        return new Tuple2<>(snapshotHint.get().getProtocol(), snapshotHint.get().getMetadata());
       }
 
-      // We found the protocol and metadata in a version older than the one we are looking
-      // for. We need to replay the actions to get the latest protocol and metadata, but
-      // update the hint to read the actions from the version we found to check if the
-      // protocol and metadata are updated in the versions after the one we found.
-      snapshotHint =
-          Optional.of(
-              new SnapshotHint(
-                  versionStats.getVersion(),
-                  versionStats.getProtocol(),
-                  versionStats.getMetadata()));
-    }
+      // Compute the lower bound for the CRC search
+      // If the snapshot hint is present, we can use it as the lower bound for the CRC search.
+      // TODO: this can be further improved to make the lower bound until the checkpoint version
+      Optional<Long> crcSearchLowerBound = snapshotHint.map(SnapshotHint::getVersion);
 
-    Protocol protocol = null;
-    Metadata metadata = null;
+      Optional<VersionStats> versionStatsOpt =
+          ChecksumReaderWriter.getVersionStats(
+              engine, logSegment.logPath, snapshotVersion, crcSearchLowerBound);
 
-    try (CloseableIterator<ActionWrapper> reverseIter =
-        new ActionsIterator(
-            engine,
-            logSegment.allLogFilesReversed(),
-            PROTOCOL_METADATA_READ_SCHEMA,
-            Optional.empty())) {
-      while (reverseIter.hasNext()) {
-        final ActionWrapper nextElem = reverseIter.next();
-        final long version = nextElem.getVersion();
-
-        // Load this lazily (as needed). We may be able to just use the hint.
-        ColumnarBatch columnarBatch = null;
-
-        if (protocol == null) {
-          columnarBatch = nextElem.getColumnarBatch();
-          assert (columnarBatch.getSchema().equals(PROTOCOL_METADATA_READ_SCHEMA));
-
-          final ColumnVector protocolVector = columnarBatch.getColumnVector(0);
-
-          for (int i = 0; i < protocolVector.getSize(); i++) {
-            if (!protocolVector.isNullAt(i)) {
-              protocol = Protocol.fromColumnVector(protocolVector, i);
-
-              if (metadata != null) {
-                // Stop since we have found the latest Protocol and Metadata.
-                return new Tuple2<>(protocol, metadata);
-              }
-
-              break; // We just found the protocol, exit this for-loop
-            }
-          }
+      if (versionStatsOpt.isPresent()) {
+        // We found the protocol and metadata for the version we are looking for
+        VersionStats versionStats = versionStatsOpt.get();
+        if (versionStats.getVersion() == snapshotVersion) {
+          return new Tuple2<>(versionStats.getProtocol(), versionStats.getMetadata());
         }
 
-        if (metadata == null) {
-          if (columnarBatch == null) {
+        // We found the protocol and metadata in a version older than the one we are looking
+        // for. We need to replay the actions to get the latest protocol and metadata, but
+        // update the hint to read the actions from the version we found to check if the
+        // protocol and metadata are updated in the versions after the one we found.
+        snapshotHint =
+            Optional.of(
+                new SnapshotHint(
+                    versionStats.getVersion(),
+                    versionStats.getProtocol(),
+                    versionStats.getMetadata()));
+      }
+
+      Protocol protocol = null;
+      Metadata metadata = null;
+
+      try (CloseableIterator<ActionWrapper> reverseIter =
+          new ActionsIterator(
+              engine,
+              logSegment.allLogFilesReversed(),
+              PROTOCOL_METADATA_READ_SCHEMA,
+              Optional.empty())) {
+        while (reverseIter.hasNext()) {
+          final ActionWrapper nextElem = reverseIter.next();
+          final long version = nextElem.getVersion();
+
+          // Load this lazily (as needed). We may be able to just use the hint.
+          ColumnarBatch columnarBatch = null;
+
+          if (protocol == null) {
             columnarBatch = nextElem.getColumnarBatch();
             assert (columnarBatch.getSchema().equals(PROTOCOL_METADATA_READ_SCHEMA));
-          }
-          final ColumnVector metadataVector = columnarBatch.getColumnVector(1);
 
-          for (int i = 0; i < metadataVector.getSize(); i++) {
-            if (!metadataVector.isNullAt(i)) {
-              metadata = Metadata.fromColumnVector(metadataVector, i);
+            final ColumnVector protocolVector = columnarBatch.getColumnVector(0);
 
-              if (protocol != null) {
-                // Stop since we have found the latest Protocol and Metadata.
-                TableFeatures.validateReadSupportedTable(
-                    protocol, dataPath.toString(), Optional.of(metadata));
-                return new Tuple2<>(protocol, metadata);
+            for (int i = 0; i < protocolVector.getSize(); i++) {
+              if (!protocolVector.isNullAt(i)) {
+                protocol = Protocol.fromColumnVector(protocolVector, i);
+
+                if (metadata != null) {
+                  // Stop since we have found the latest Protocol and Metadata.
+                  return new Tuple2<>(protocol, metadata);
+                }
+
+                break; // We just found the protocol, exit this for-loop
               }
-
-              break; // We just found the metadata, exit this for-loop
             }
           }
-        }
 
-        // Since we haven't returned, at least one of P or M is null.
-        // Note: Suppose the hint is at version N. We check the hint eagerly at N + 1 so
-        // that we don't read or open any files at version N.
-        if (snapshotHint.isPresent() && version == snapshotHint.get().getVersion() + 1) {
-          if (protocol == null) {
-            protocol = snapshotHint.get().getProtocol();
-          }
           if (metadata == null) {
-            metadata = snapshotHint.get().getMetadata();
+            if (columnarBatch == null) {
+              columnarBatch = nextElem.getColumnarBatch();
+              assert (columnarBatch.getSchema().equals(PROTOCOL_METADATA_READ_SCHEMA));
+            }
+            final ColumnVector metadataVector = columnarBatch.getColumnVector(1);
+
+            for (int i = 0; i < metadataVector.getSize(); i++) {
+              if (!metadataVector.isNullAt(i)) {
+                metadata = Metadata.fromColumnVector(metadataVector, i);
+
+                if (protocol != null) {
+                  // Stop since we have found the latest Protocol and Metadata.
+                  TableFeatures.validateReadSupportedTable(
+                      protocol, dataPath.toString(), Optional.of(metadata));
+                  return new Tuple2<>(protocol, metadata);
+                }
+
+                break; // We just found the metadata, exit this for-loop
+              }
+            }
           }
-          return new Tuple2<>(protocol, metadata);
+
+          // Since we haven't returned, at least one of P or M is null.
+          // Note: Suppose the hint is at version N. We check the hint eagerly at N + 1 so
+          // that we don't read or open any files at version N.
+          if (snapshotHint.isPresent() && version == snapshotHint.get().getVersion() + 1) {
+            if (protocol == null) {
+              protocol = snapshotHint.get().getProtocol();
+            }
+            if (metadata == null) {
+              metadata = snapshotHint.get().getMetadata();
+            }
+            return new Tuple2<>(protocol, metadata);
+          }
         }
+      } catch (IOException ex) {
+        throw new RuntimeException("Could not close iterator", ex);
       }
-    } catch (IOException ex) {
-      throw new RuntimeException("Could not close iterator", ex);
-    }
 
-    if (protocol == null) {
+      if (protocol == null) {
+        throw new IllegalStateException(
+            String.format("No protocol found at version %s", logSegment.version));
+      }
+
       throw new IllegalStateException(
-          String.format("No protocol found at version %s", logSegment.version));
+          String.format("No metadata found at version %s", logSegment.version));
+    } finally {
+      logger.info(
+          "IRC Benchmark: Took {} for loading protocol and metadata",
+          System.currentTimeMillis() - time);
     }
-
-    throw new IllegalStateException(
-        String.format("No metadata found at version %s", logSegment.version));
   }
 
   private Optional<Long> loadLatestTransactionVersion(Engine engine, String applicationId) {

@@ -103,6 +103,7 @@ public class ChecksumReaderWriter {
   }
 
   private static Optional<VersionStats> readChecksumFile(Engine engine, Path filePath) {
+    long start = System.currentTimeMillis();
     try (CloseableIterator<ColumnarBatch> iter =
         engine
             .getJsonHandler()
@@ -136,6 +137,11 @@ public class ChecksumReaderWriter {
       // This can happen when the version does not have a checksum file
       logger.warn("Failed to read checksum file {}", filePath, e);
       return Optional.empty();
+    } finally {
+      logger.info(
+          "IRC Benchmark: Time taken to read checksum file {} is {} ms",
+          filePath,
+          System.currentTimeMillis() - start);
     }
   }
 }
