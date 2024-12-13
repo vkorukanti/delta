@@ -26,6 +26,8 @@ import java.io.IOException;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 import java.util.function.Function;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Closeable extension of {@link Iterator}
@@ -35,6 +37,8 @@ import java.util.function.Function;
  */
 @Evolving
 public interface CloseableIterator<T> extends Iterator<T>, Closeable {
+
+  Logger logger = LoggerFactory.getLogger(CloseableIterator.class);
 
   /**
    * Returns true if the iteration has more elements. (In other words, returns true if next would
@@ -157,6 +161,39 @@ public interface CloseableIterator<T> extends Iterator<T>, Closeable {
       @Override
       public void close() throws IOException {
         Utils.closeCloseables(delegate, other);
+      }
+    };
+  }
+
+  default CloseableIterator<T> timedIterator(String context) {
+    CloseableIterator<T> delegate = this;
+    return new CloseableIterator<T>() {
+      long time = 0;
+
+      @Override
+      public boolean hasNext() {
+        long startTime = System.currentTimeMillis();
+        try {
+          return delegate.hasNext();
+        } finally {
+          time += System.currentTimeMillis() - startTime;
+        }
+      }
+
+      @Override
+      public T next() {
+        long startTime = System.currentTimeMillis();
+        try {
+          return delegate.next();
+        } finally {
+          time += System.currentTimeMillis() - startTime;
+        }
+      }
+
+      @Override
+      public void close() throws IOException {
+        delegate.close();
+        logger.info("Time taken for {} is {} ms", context, time);
       }
     };
   }

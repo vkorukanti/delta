@@ -84,6 +84,8 @@ public class CreateCheckpointIterator implements CloseableIterator<FilteredColum
   private final Engine engine;
   private final LogSegment logSegment;
 
+  private long timeTaken = 0;
+
   /**
    * Tombstones (i.e. RemoveFile) will be still kept in checkpoint until the tombstone timestamp is
    * earlier than this retention timestamp.
@@ -136,27 +138,38 @@ public class CreateCheckpointIterator implements CloseableIterator<FilteredColum
 
   @Override
   public boolean hasNext() {
-    initActionIterIfRequired();
-    checkState(!closed, "Can't call `hasNext` on a closed iterator.");
-    return prepareNext();
+    long startTime = System.currentTimeMillis();
+    try {
+      initActionIterIfRequired();
+      checkState(!closed, "Can't call `hasNext` on a closed iterator.");
+      return prepareNext();
+    } finally {
+      timeTaken += System.currentTimeMillis() - startTime;
+    }
   }
 
   @Override
   public FilteredColumnarBatch next() {
-    checkState(!closed, "Can't call `next` on a closed iterator.");
-    if (!hasNext()) {
-      throw new NoSuchElementException();
-    }
+    long startTime = System.currentTimeMillis();
+    try {
+      checkState(!closed, "Can't call `next` on a closed iterator.");
+      if (!hasNext()) {
+        throw new NoSuchElementException();
+      }
 
-    FilteredColumnarBatch toReturn = toReturnNext.get();
-    toReturnNext = Optional.empty();
-    return toReturn;
+      FilteredColumnarBatch toReturn = toReturnNext.get();
+      toReturnNext = Optional.empty();
+      return toReturn;
+    } finally {
+      timeTaken += System.currentTimeMillis() - startTime;
+    }
   }
 
   @Override
   public void close() throws IOException {
     closed = true;
     Utils.closeCloseables(actionsIter);
+    logger.info("IRC Benchmark: Time taken to create checkpoint data: {} ms", timeTaken);
   }
 
   /**

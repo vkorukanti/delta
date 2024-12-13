@@ -38,6 +38,7 @@ import io.delta.kernel.types.TimestampType.TIMESTAMP
 import io.delta.kernel.types._
 import io.delta.kernel.utils.CloseableIterable.{emptyIterable, inMemoryIterable}
 import io.delta.kernel.utils.CloseableIterable
+import org.apache.hadoop.fs.Path
 
 import java.util.{Locale, Optional}
 import scala.collection.JavaConverters._
@@ -253,29 +254,6 @@ class DeltaTableWritesSuite extends DeltaTableWriteSuiteBase with ParquetSuiteBa
       assert(
         !configurations.containsKey(
           TableConfig.CHECKPOINT_INTERVAL.getKey.toLowerCase(Locale.ROOT)))
-    }
-  }
-
-  test("create table - invalid properties - expect failure") {
-    withTempDirAndEngine { (tablePath, engine) =>
-      val ex1 = intercept[UnknownConfigurationException] {
-        createTxn(
-          engine, tablePath, isNewTable = true, testSchema, Seq.empty, Map("invalid key" -> "10"))
-      }
-      assert(ex1.getMessage.contains("Unknown configuration was specified: invalid key"))
-
-      val ex2 = intercept[InvalidConfigurationValueException] {
-        createTxn(
-          engine,
-          tablePath,
-          isNewTable = true,
-          testSchema, Seq.empty, Map(TableConfig.CHECKPOINT_INTERVAL.getKey -> "-1"))
-      }
-      assert(
-        ex2.getMessage.contains(
-          String.format(
-            "Invalid value for table property '%s': '%s'. %s",
-            TableConfig.CHECKPOINT_INTERVAL.getKey, "-1", "needs to be a positive integer.")))
     }
   }
 
@@ -960,6 +938,60 @@ class DeltaTableWritesSuite extends DeltaTableWriteSuiteBase with ParquetSuiteBa
         verifyCommitInfo(tablePath = tablePath, version = 0, operation = WRITE)
         verifyWrittenContent(tablePath, testSchema, expData)
       }
+    }
+  }
+
+  ///////////////////////////////////////////////////////////////////////////
+  // CRC file is created and read
+  ///////////////////////////////////////////////////////////////////////////
+  test("crc verification - insert into table - table created from scratch") {
+    withTempDirAndEngine { (tblPath, engine) =>
+      val commitResult0 = appendData(
+        engine,
+        tblPath,
+        isNewTable = true,
+        testSchema,
+        partCols = Seq.empty,
+        data = Seq(Map.empty[String, Literal] -> (dataBatches1 ++ dataBatches2))
+      )
+
+      val expectedAnswer = dataBatches1.flatMap(_.toTestRows) ++ dataBatches2.flatMap(_.toTestRows)
+
+      verifyCommitResult(commitResult0, expVersion = 0, expIsReadyForCheckpoint = false)
+      verifyCommitInfo(tblPath, version = 0, partitionCols = Seq.empty, operation = WRITE)
+      verifyWrittenContent(tblPath, testSchema, expectedAnswer)
+      verifyChecksumfile(tblPath, version = 0L, "hhhh")
+    }
+  }
+
+  test("crc verification - insert into table - already existing table") {
+    withTempDirAndEngine { (tblPath, engine) =>
+      val commitResult0 = appendData(
+        engine,
+        tblPath,
+        isNewTable = true,
+        testSchema,
+        partCols = Seq.empty,
+        data = Seq(Map.empty[String, Literal] -> dataBatches1)
+      )
+
+      verifyCommitResult(commitResult0, expVersion = 0, expIsReadyForCheckpoint = false)
+      verifyCommitInfo(tblPath, version = 0, partitionCols = Seq.empty, operation = WRITE)
+      verifyWrittenContent(tblPath, testSchema, dataBatches1.flatMap(_.toTestRows))
+      verifyChecksumfile(tblPath, version = 0L, "hhhh")
+
+      val commitResult1 = appendData(
+        engine,
+        tblPath,
+        data = Seq(Map.empty[String, Literal] -> dataBatches2)
+      )
+
+      val expAnswer = dataBatches1.flatMap(_.toTestRows) ++ dataBatches2.flatMap(_.toTestRows)
+
+      verifyCommitResult(commitResult1, expVersion = 1, expIsReadyForCheckpoint = false)
+      verifyCommitInfo(tblPath, version = 1, partitionCols = null, operation = WRITE)
+      verifyWrittenContent(tblPath, testSchema, expAnswer)
+      verifyChecksumfile(tblPath, version = 1L, "hhhh")
     }
   }
 

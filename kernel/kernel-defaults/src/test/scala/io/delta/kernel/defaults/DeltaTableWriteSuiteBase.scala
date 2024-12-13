@@ -92,6 +92,17 @@ trait DeltaTableWriteSuiteBase extends AnyFunSuite with TestUtils {
     assert(result === s"""{"version":$checkpointAt,"size":$expSize}""")
   }
 
+  def verifyChecksumfile(tablePath: String, version: Long, expChecksum: String): Unit = {
+    val filePath = f"$tablePath/_delta_log/$version%020d.crc"
+    val source = scala.io.Source.fromFile(filePath)
+    val result = try source.getLines().mkString(",") finally source.close()
+
+    // TODO: this is not sufficient checksum verification
+    assert(result.contains(s"""version":$version"""))
+    assert(result.contains("\"protocol\""))
+    assert(result.contains("\"metadata\""))
+  }
+
   /** Helper method to remove the delta files before the given version, to make sure the read is
    * using a checkpoint as base for state reconstruction.
    */
@@ -128,7 +139,7 @@ trait DeltaTableWriteSuiteBase extends AnyFunSuite with TestUtils {
     assert(new File(cpPath).exists())
   }
 
-  def copyTable(goldenTableName: String, targetLocation: String): Unit = {
+  def copyGoldenTable(goldenTableName: String, targetLocation: String): Unit = {
     val source = new File(goldenTablePath(goldenTableName))
     val target = new File(targetLocation)
     FileUtils.copyDirectory(source, target)

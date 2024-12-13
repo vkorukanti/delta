@@ -61,12 +61,18 @@ public class TableImpl implements Table {
    */
   public static Table forPath(Engine engine, String path, Clock clock) {
     String resolvedPath;
+    final long startTimeMillis = System.currentTimeMillis();
     try {
       resolvedPath =
           wrapEngineExceptionThrowsIO(
               () -> engine.getFileSystemClient().resolvePath(path), "Resolving path %s", path);
     } catch (IOException io) {
       throw new UncheckedIOException(io);
+    } finally {
+      logger.info(
+          "IRC Benchmark: Time taken to resolve path {} is {} ms",
+          path,
+          System.currentTimeMillis() - startTimeMillis);
     }
     return new TableImpl(resolvedPath, clock);
   }
@@ -108,7 +114,15 @@ public class TableImpl implements Table {
   @Override
   public void checkpoint(Engine engine, long version)
       throws TableNotFoundException, CheckpointAlreadyExistsException, IOException {
-    snapshotManager.checkpoint(engine, clock, version);
+    long startTimeMillis = System.currentTimeMillis();
+    try {
+      snapshotManager.checkpoint(engine, clock, version);
+    } finally {
+      logger.info(
+          "IRC Benchmark: Time taken to checkpoint version {} is {} ms",
+          version,
+          System.currentTimeMillis() - startTimeMillis);
+    }
   }
 
   @Override

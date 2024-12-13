@@ -214,9 +214,18 @@ public class SnapshotManager {
       // Write the iterator actions to the checkpoint using the Parquet handler
       wrapEngineExceptionThrowsIO(
           () -> {
-            engine
-                .getParquetHandler()
-                .writeParquetFileAtomically(checkpointPath.toString(), checkpointDataIter);
+            long startTime = System.currentTimeMillis();
+            try {
+              engine
+                  .getParquetHandler()
+                  .writeParquetFileAtomically(checkpointPath.toString(), checkpointDataIter);
+            } finally {
+              logger.info(
+                  "IRC Benchmark: {}: Took {}ms to write checkpoint file for version: {}",
+                  tablePath,
+                  System.currentTimeMillis() - startTime,
+                  version);
+            }
             return null;
           },
           "Writing checkpoint file %s",
@@ -234,6 +243,7 @@ public class SnapshotManager {
         new CheckpointMetaData(version, numberOfAddFiles, Optional.empty());
 
     Checkpointer checkpointer = new Checkpointer(logPath);
+
     checkpointer.writeLastCheckpointFile(engine, checkpointMetaData);
 
     logger.info("{}: Last checkpoint metadata file is written for version: {}", tablePath, version);
@@ -241,12 +251,20 @@ public class SnapshotManager {
     logger.info("{}: Finished checkpoint for version: {}", tablePath, version);
 
     // Clean up delta log files if enabled.
-    Metadata metadata = snapshot.getMetadata();
-    if (EXPIRED_LOG_CLEANUP_ENABLED.fromMetadata(metadata)) {
-      cleanupExpiredLogs(engine, clock, tablePath, LOG_RETENTION.fromMetadata(metadata));
-    } else {
+    long startTime = System.currentTimeMillis();
+    try {
+      Metadata metadata = snapshot.getMetadata();
+      if (EXPIRED_LOG_CLEANUP_ENABLED.fromMetadata(metadata)) {
+        cleanupExpiredLogs(engine, clock, tablePath, LOG_RETENTION.fromMetadata(metadata));
+      } else {
+        logger.info(
+            "{}: Log cleanup is disabled. Skipping the deletion of expired log files", tablePath);
+      }
+    } finally {
       logger.info(
-          "{}: Log cleanup is disabled. Skipping the deletion of expired log files", tablePath);
+          "IRC Benchmark: {}: Took {}ms to clean up expired log files after checkpoint",
+          tablePath,
+          System.currentTimeMillis() - startTime);
     }
   }
 
@@ -270,11 +288,15 @@ public class SnapshotManager {
   }
 
   /** Get an iterator of files in the _delta_log directory starting with the startVersion. */
-  private CloseableIterator<FileStatus> listFrom(Engine engine, long startVersion)
+  private CloseableIterator<FileStatus> listFrom(Engine engine, long startVersion, String context)
       throws IOException {
     logger.debug("{}: startVersion: {}", tablePath, startVersion);
     return wrapEngineExceptionThrowsIO(
-        () -> engine.getFileSystemClient().listFrom(FileNames.listingPrefix(logPath, startVersion)),
+        () ->
+            engine
+                .getFileSystemClient()
+                .listFrom(FileNames.listingPrefix(logPath, startVersion))
+                .timedIterator(context),
         "Listing from %s",
         FileNames.listingPrefix(logPath, startVersion));
   }
@@ -295,11 +317,12 @@ public class SnapshotManager {
    * Returns an iterator containing a list of files found in the _delta_log directory starting with
    * the startVersion. Returns None if no files are found or the directory is missing.
    */
-  private Optional<CloseableIterator<FileStatus>> listFromOrNone(Engine engine, long startVersion) {
+  private Optional<CloseableIterator<FileStatus>> listFromOrNone(
+      Engine engine, long startVersion, String context) {
     // LIST the directory, starting from the provided lower bound (treat missing dir as empty).
     // NOTE: "empty/missing" is _NOT_ equivalent to "contains no useful commit files."
     try {
-      CloseableIterator<FileStatus> results = listFrom(engine, startVersion);
+      CloseableIterator<FileStatus> results = listFrom(engine, startVersion, context);
       if (results.hasNext()) {
         return Optional.of(results);
       } else {
@@ -348,6 +371,7 @@ public class SnapshotManager {
       long startVersion,
       Optional<Long> versionToLoad,
       Optional<TableCommitCoordinatorClientHandler> tableCommitHandlerOpt) {
+
     versionToLoad.ifPresent(
         v ->
             checkArgument(
@@ -355,7 +379,7 @@ public class SnapshotManager {
                 "versionToLoad=%s provided is less than startVersion=%s",
                 v,
                 startVersion));
-    logger.debug(
+    logger.info(
         "startVersion: {}, versionToLoad: {}, coordinated commits enabled: {}",
         startVersion,
         versionToLoad,
@@ -368,7 +392,11 @@ public class SnapshotManager {
         getUnbackfilledCommits(tableCommitHandlerOpt, startVersion, versionToLoad);
 
     final AtomicLong maxDeltaVersionSeen = new AtomicLong(startVersion - 1);
-    Optional<CloseableIterator<FileStatus>> listing = listFromOrNone(engine, startVersion);
+
+    Optional<CloseableIterator<FileStatus>> listing =
+        listFromOrNone(engine, startVersion, "list delta and checkpoint files");
+
+    final long startTime2 = System.currentTimeMillis();
     Optional<List<FileStatus>> resultFromFsListingOpt =
         listing.map(
             fileStatusesIter -> {
@@ -419,12 +447,27 @@ public class SnapshotManager {
                 output.add(fileStatus);
               }
 
+              logger.info(
+                  "{}: Took {}ms to go through delta and checkpoint files starting from "
+                      + "version {}, output size: {}",
+                  tablePath,
+                  System.currentTimeMillis() - startTime2,
+                  startVersion,
+                  output.size());
               return output;
             });
 
     if (!tableCommitHandlerOpt.isPresent()) {
+      try {
+        if (listing.isPresent()) {
+          listing.get().close();
+        }
+      } catch (IOException e) {
+        logger.error("Failed to close the listing iterator", e);
+      }
       return resultFromFsListingOpt;
     }
+    logger.info("Unbackfilled commits: {}", unbackfilledCommits.size());
     List<FileStatus> relevantUnbackfilledCommits =
         unbackfilledCommits.stream()
             .filter((commit) -> commit.getVersion() > maxDeltaVersionSeen.get())
@@ -433,6 +476,14 @@ public class SnapshotManager {
                     !versionToLoad.isPresent() || commit.getVersion() <= versionToLoad.get())
             .map(Commit::getFileStatus)
             .collect(Collectors.toList());
+
+    try {
+      if (listing.isPresent()) {
+        listing.get().close();
+      }
+    } catch (IOException e) {
+      logger.error("Failed to close the listing iterator", e);
+    }
 
     return resultFromFsListingOpt.map(
         fsListing -> {
@@ -472,14 +523,33 @@ public class SnapshotManager {
    */
   private SnapshotImpl getSnapshotAtInit(Engine engine) throws TableNotFoundException {
     Checkpointer checkpointer = new Checkpointer(logPath);
-    Optional<CheckpointMetaData> lastCheckpointOpt = checkpointer.readLastCheckpointFile(engine);
+
+    long startTimeMillis = System.currentTimeMillis();
+
+    Optional<CheckpointMetaData> lastCheckpointOpt;
+    try {
+      lastCheckpointOpt = checkpointer.readLastCheckpointFile(engine);
+    } finally {
+      logger.info(
+          "IRC Benchmark: Took {}ms to read the last checkpoint file",
+          System.currentTimeMillis() - startTimeMillis);
+    }
     if (!lastCheckpointOpt.isPresent()) {
       logger.warn(
           "{}: Last checkpoint file is missing or corrupted. "
               + "Will search for the checkpoint files directly.",
           tablePath);
     }
-    Optional<LogSegment> logSegmentOpt = getLogSegmentFrom(engine, lastCheckpointOpt);
+
+    startTimeMillis = System.currentTimeMillis();
+    Optional<LogSegment> logSegmentOpt;
+    try {
+      logSegmentOpt = getLogSegmentFrom(engine, lastCheckpointOpt);
+    } finally {
+      logger.info(
+          "IRC Benchmark: Took {}ms get the log segment from the last checkpoint file",
+          System.currentTimeMillis() - startTimeMillis);
+    }
 
     return logSegmentOpt
         .map(logSegment -> getCoordinatedCommitsAwareSnapshot(engine, logSegment, Optional.empty()))
@@ -566,8 +636,15 @@ public class SnapshotManager {
    */
   private Optional<LogSegment> getLogSegmentFrom(
       Engine engine, Optional<CheckpointMetaData> startingCheckpoint) {
-    return getLogSegmentAtOrBeforeVersion(
-        engine, startingCheckpoint.map(x -> x.version), Optional.empty(), Optional.empty());
+    long startTimeMillis = System.currentTimeMillis();
+    try {
+      return getLogSegmentAtOrBeforeVersion(
+          engine, startingCheckpoint.map(x -> x.version), Optional.empty(), Optional.empty());
+    } finally {
+      logger.info(
+          "IRC Benchmark: Took {}ms to construct a log segment from the starting checkpoint",
+          System.currentTimeMillis() - startTimeMillis);
+    }
   }
 
   /**
@@ -604,7 +681,7 @@ public class SnapshotManager {
           findLastCompleteCheckpointBefore(engine, logPath, beforeVersion).map(x -> x.version);
 
       logger.info(
-          "{}: Took {}ms to load last checkpoint before version {}",
+          "IRC Benchmark: {}: Took {}ms to load last checkpoint before version {}",
           tablePath,
           System.currentTimeMillis() - startTimeMillis,
           beforeVersion);
@@ -622,7 +699,7 @@ public class SnapshotManager {
     final Optional<List<FileStatus>> newFiles =
         listDeltaAndCheckpointFiles(engine, startVersion, versionToLoad, tableCommitHandlerOpt);
     logger.info(
-        "{}: Took {}ms to list the files after starting checkpoint",
+        "IRC Benchmark: {}: Took {}ms to list the files after starting checkpoint",
         tablePath,
         System.currentTimeMillis() - startTimeMillis);
 
@@ -632,7 +709,7 @@ public class SnapshotManager {
           engine, startCheckpointToUse, versionToLoad, newFiles, tableCommitHandlerOpt);
     } finally {
       logger.info(
-          "{}: Took {}ms to construct a log segment",
+          "IRC Benchmark: {}: Took {}ms to construct a log segment",
           tablePath,
           System.currentTimeMillis() - startTimeMillis);
     }
