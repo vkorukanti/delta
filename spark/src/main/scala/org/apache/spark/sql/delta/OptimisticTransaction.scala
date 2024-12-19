@@ -379,7 +379,8 @@ trait OptimisticTransactionImpl extends TransactionalWrite
   }
 
   protected val postCommitHooks = new ArrayBuffer[PostCommitHook]()
-  registerPostCommitHook(ChecksumHook)
+  // Temporarily disable it to avoid the warnings in pyspark shell
+  // registerPostCommitHook(ChecksumHook)
   catalogTable.foreach { ct =>
     registerPostCommitHook(UpdateCatalogFactory.getUpdateCatalogHook(ct, spark))
   }

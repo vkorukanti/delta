@@ -252,6 +252,22 @@ public abstract class BaseExternalLogStore extends HadoopFileSystemLogStore {
             putExternalEntry(entry, false); // overwrite=false
 
             try {
+                // DEBUG-ONLY START
+                // Create a delay to simulate a condition where the external store entry
+                // is stored for the commit, but the temp commit file is not yet copied
+                // as N.json in _delta_log. During this delay if another write comes to write
+                // it should backfill the commit and start writing commiting as N+1. If
+                // for some reason (e.g. path schemes different but both refer to the same entity)
+                // it can't find the E(N, T(N), complete=false) in the external store, it will create
+                // the to commit as N.
+
+                LOG.warn("SLOW_WRITE: " + System.getProperty("SLOW_WRITE"));
+                if (System.getProperty("SLOW_WRITE") != null) {
+                    LOG.warn("Slow write is enabled");
+                    Thread.sleep(20000); // sleep for 20 seconds.
+                }
+                // DEBUG-ONLY END
+
                 // Step 3: COMMIT the commit to the delta log.
                 //         Copy T(N) -> N.json with overwrite=false
                 writeCopyTempFile(fs, entry.absoluteTempPath(), resolvedPath);
@@ -310,6 +326,16 @@ public abstract class BaseExternalLogStore extends HadoopFileSystemLogStore {
      */
     protected Path getTablePath(Path path) {
         return path.getParent().getParent();
+    }
+
+    protected Path getSchemaNormalizedPath(Path path) {
+        URI originalUri = path.toUri();
+
+        String normalizedSchema = "s3";
+        String authority = originalUri.getAuthority();
+        String pathString = originalUri.getPath();
+
+        return new Path(normalizedSchema, authority, pathString);
     }
 
     /**
