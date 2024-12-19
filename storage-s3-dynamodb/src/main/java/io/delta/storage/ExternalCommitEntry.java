@@ -81,6 +81,10 @@ public final class ExternalCommitEntry {
      * @return the absolute path to the file for this entry.
      * e.g. $tablePath/_delta_log/0000000N.json
      */
+    public Path absoluteFilePath(Path tablePath) {
+        return new Path(new Path(tablePath, "_delta_log"), fileName);
+    }
+
     public Path absoluteFilePath() {
         return new Path(new Path(tablePath, "_delta_log"), fileName);
     }
@@ -88,7 +92,7 @@ public final class ExternalCommitEntry {
     /**
      * @return the absolute path to the temp file for this entry
      */
-    public Path absoluteTempPath() {
+    public Path absoluteTempPath(Path tablePath) {
         return new Path(new Path(tablePath, "_delta_log"), tempPath);
     }
 }

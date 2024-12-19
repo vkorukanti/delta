@@ -140,7 +140,7 @@ public abstract class BaseExternalLogStore extends HadoopFileSystemLogStore {
                 // Note: `fixDeltaLog` will apply per-JVM mutual exclusion via a lock to help reduce
                 // the chance of many reader threads in a single JVM doing duplicate copies of
                 // T(N) -> N.json.
-                fixDeltaLog(fs, entry.get());
+                fixDeltaLog(tablePath, fs, entry.get());
             }
         }
 
@@ -204,11 +204,11 @@ public abstract class BaseExternalLogStore extends HadoopFileSystemLogStore {
                     final Path prevPath = FileNameUtils.deltaFile(deltaLogPath, prevVersion);
                     final String prevFileName = prevPath.getName();
                     final Optional<ExternalCommitEntry> prevEntry = getExternalEntry(
-                        tablePath.toString(),
+                        getSchemaNormalizedPath(tablePath).toString(),
                         prevFileName
                     );
                     if (prevEntry.isPresent() && !prevEntry.get().complete) {
-                        fixDeltaLog(fs, prevEntry.get());
+                        fixDeltaLog(tablePath, fs, prevEntry.get());
                     } else {
                         if (!fs.exists(prevPath)) {
                             throw new java.nio.file.FileSystemException(
@@ -219,7 +219,7 @@ public abstract class BaseExternalLogStore extends HadoopFileSystemLogStore {
                 } else {
                     final String fileName = path.getName();
                     final Optional<ExternalCommitEntry> entry = getExternalEntry(
-                        tablePath.toString(),
+                        getSchemaNormalizedPath(tablePath).toString(),
                         fileName
                     );
                     if (entry.isPresent()) {
@@ -238,7 +238,7 @@ public abstract class BaseExternalLogStore extends HadoopFileSystemLogStore {
             // Step 2: PREPARE the commit
             final String tempPath = createTemporaryPath(resolvedPath);
             final ExternalCommitEntry entry = new ExternalCommitEntry(
-                tablePath,
+                getSchemaNormalizedPath(tablePath),
                 resolvedPath.getName(),
                 tempPath,
                 false, // not complete
@@ -246,7 +246,7 @@ public abstract class BaseExternalLogStore extends HadoopFileSystemLogStore {
             );
 
             // Step 2.1: Create temp file T(N)
-            writeActions(fs, entry.absoluteTempPath(), actions);
+            writeActions(fs, entry.absoluteTempPath(tablePath), actions);
 
             // Step 2.2: Create externals store entry E(N, T(N), complete=false)
             putExternalEntry(entry, false); // overwrite=false
@@ -270,7 +270,7 @@ public abstract class BaseExternalLogStore extends HadoopFileSystemLogStore {
 
                 // Step 3: COMMIT the commit to the delta log.
                 //         Copy T(N) -> N.json with overwrite=false
-                writeCopyTempFile(fs, entry.absoluteTempPath(), resolvedPath);
+                writeCopyTempFile(fs, entry.absoluteTempPath(tablePath), resolvedPath);
 
                 // Step 4: ACKNOWLEDGE the commit
                 writePutCompleteDbEntry(entry);
@@ -412,12 +412,13 @@ public abstract class BaseExternalLogStore extends HadoopFileSystemLogStore {
      *   exists and a concurrent writer has already copied the contents of T(N).
      * - We will never see one when writing to the external cache since overwrite=true.
      */
-    private void fixDeltaLog(FileSystem fs, ExternalCommitEntry entry) throws IOException {
+    private void fixDeltaLog(
+            Path tablePath, FileSystem fs, ExternalCommitEntry entry) throws IOException {
         if (entry.complete) {
             return;
         }
 
-        final Path targetPath = entry.absoluteFilePath();
+        final Path targetPath = entry.absoluteFilePath(tablePath);
         try {
             pathLock.acquire(targetPath);
 
@@ -427,7 +428,7 @@ public abstract class BaseExternalLogStore extends HadoopFileSystemLogStore {
                 LOG.info("trying to fix: {}", entry.fileName);
                 try {
                     if (!copied && !fs.exists(targetPath)) {
-                        fixDeltaLogCopyTempFile(fs, entry.absoluteTempPath(), targetPath);
+                        fixDeltaLogCopyTempFile(fs, entry.absoluteTempPath(tablePath), targetPath);
                         copied = true;
                     }
                     fixDeltaLogPutCompleteDbEntry(entry);

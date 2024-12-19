@@ -314,7 +314,7 @@ class ExternalLogStoreSuite extends org.apache.spark.sql.delta.PublicLogStoreSui
         assert(!delta0_fail.getFileSystem(sessionHadoopConf).exists(delta0_fail))
 
         // Now perform a `listFrom` read, which should fix the transaction log
-        val contents = store.read(entry.absoluteTempPath(), sessionHadoopConf).toList
+        val contents = store.read(entry.absoluteTempPath(entry.tablePath), sessionHadoopConf).toList
         FailingFileSystem.failOnSuffix = None
         store.listFrom(delta0_normal, sessionHadoopConf)
 
