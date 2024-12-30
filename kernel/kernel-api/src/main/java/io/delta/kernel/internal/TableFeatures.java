@@ -17,6 +17,7 @@
 package io.delta.kernel.internal;
 
 import static io.delta.kernel.internal.DeltaErrors.*;
+import static io.delta.kernel.internal.TableConfig.COORDINATED_COMMITS_COORDINATOR_NAME;
 import static io.delta.kernel.internal.TableConfig.IN_COMMIT_TIMESTAMPS_ENABLED;
 
 import io.delta.kernel.internal.actions.Metadata;
@@ -208,6 +209,7 @@ public class TableFeatures {
   private static int getMinReaderVersion(String feature) {
     switch (feature) {
       case "inCommitTimestamp-preview":
+      case "coordinatedCommits-preview":
         return 3;
       default:
         return 1;
@@ -223,6 +225,7 @@ public class TableFeatures {
   private static int getMinWriterVersion(String feature) {
     switch (feature) {
       case "inCommitTimestamp-preview":
+      case "coordinatedCommits-preview":
         return 7;
       default:
         return 2;
@@ -241,7 +244,13 @@ public class TableFeatures {
       Metadata metadata, String feature) {
     switch (feature) {
       case "inCommitTimestamp-preview":
-        return IN_COMMIT_TIMESTAMPS_ENABLED.fromMetadata(metadata);
+        return IN_COMMIT_TIMESTAMPS_ENABLED.fromMetadata(metadata)
+            ||
+            // TODO: Check Delta-spark and see if it needs other feature enablement.
+            COORDINATED_COMMITS_COORDINATOR_NAME.fromMetadata(metadata).isPresent();
+      case "coordinatedCommits-preview":
+        // TODO: Check Delta-spark and see if it needs other feature enablement.
+        return COORDINATED_COMMITS_COORDINATOR_NAME.fromMetadata(metadata).isPresent();
       default:
         return false;
     }

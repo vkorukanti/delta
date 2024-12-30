@@ -31,7 +31,7 @@ import scala.collection.immutable.Seq
 class CoordinatedCommitsEnablementSuite extends DeltaTableWriteSuiteBase
   with CoordinatedCommitsTestUtils {
   private def validateCoordinatedCommitsCompleteEnablement(
-    engine: Engine, snapshot: SnapshotImpl, expectEnabled: Boolean): Unit = {
+      snapshot: SnapshotImpl, expectEnabled: Boolean): Unit = {
     assert(
       COORDINATED_COMMITS_COORDINATOR_NAME.fromMetadata(snapshot.getMetadata).isPresent
         == expectEnabled)
@@ -61,7 +61,7 @@ class CoordinatedCommitsEnablementSuite extends DeltaTableWriteSuiteBase
           COORDINATED_COMMITS_COORDINATOR_CONF.getKey -> "{}")
       )
       validateCoordinatedCommitsCompleteEnablement(
-        engine, table.getLatestSnapshot(engine).asInstanceOf[SnapshotImpl], expectEnabled = true)
+        table.getLatestSnapshot(engine).asInstanceOf[SnapshotImpl], expectEnabled = true)
     }, Map(CommitCoordinatorProvider.getCommitCoordinatorNameConfKey("tracking-in-memory") ->
       classOf[TrackingInMemoryCommitCoordinatorBuilder].getName,
       InMemoryCommitCoordinatorBuilder.BATCH_SIZE_CONF_KEY -> "2"))
@@ -90,7 +90,7 @@ class CoordinatedCommitsEnablementSuite extends DeltaTableWriteSuiteBase
       )
 
       validateCoordinatedCommitsCompleteEnablement(
-        engine, table.getLatestSnapshot(engine).asInstanceOf[SnapshotImpl], expectEnabled = false)
+        table.getLatestSnapshot(engine).asInstanceOf[SnapshotImpl], expectEnabled = false)
 
       enableCoordinatedCommits(engine, tablePath, "tracking-in-memory")
 
@@ -104,7 +104,7 @@ class CoordinatedCommitsEnablementSuite extends DeltaTableWriteSuiteBase
       )
 
       validateCoordinatedCommitsCompleteEnablement(
-        engine, table.getLatestSnapshot(engine).asInstanceOf[SnapshotImpl], expectEnabled = true)
+        table.getLatestSnapshot(engine).asInstanceOf[SnapshotImpl], expectEnabled = true)
     }, Map(CommitCoordinatorProvider.getCommitCoordinatorNameConfKey("tracking-in-memory") ->
       classOf[TrackingInMemoryCommitCoordinatorBuilder].getName,
       InMemoryCommitCoordinatorBuilder.BATCH_SIZE_CONF_KEY -> "2"))
