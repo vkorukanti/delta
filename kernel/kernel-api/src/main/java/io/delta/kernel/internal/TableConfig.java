@@ -35,6 +35,55 @@ public class TableConfig<T> {
   //////////////////
 
   /**
+   * Whether this Delta table is append-only. Files can't be deleted, or values can't be updated.
+   */
+  public static final TableConfig<Boolean> APPEND_ONLY =
+      new TableConfig<>(
+          "delta.appendOnly",
+          "false",
+          Boolean::valueOf,
+          value -> true,
+          "needs to be a boolean.",
+          true);
+
+  /**
+   * Enable change data feed output. When enabled, DELETE, UPDATE, and MERGE INTO operations will
+   * need to do additional work to output their change data in an efficiently readable format.
+   */
+  public static final TableConfig<Boolean> CHANGE_DATA_FEED =
+      new TableConfig<>(
+          "delta.enableChangeDataFeed",
+          "false",
+          Boolean::valueOf,
+          value -> true,
+          "needs to be a boolean.",
+          true);
+
+  /** Whether commands modifying this Delta table are allowed to create new deletion vectors. */
+  public static final TableConfig<Boolean> ENABLE_DELETION_VECTORS_CREATION =
+      new TableConfig<>(
+          "delta.enableDeletionVectors",
+          "false",
+          Boolean::valueOf,
+          value -> true,
+          "needs to be a boolean.",
+          true);
+
+  /**
+   * Indicates whether Row Tracking is enabled on the table. When this flag is turned on, all rows
+   * are guaranteed to have Row IDs and Row Commit Versions assigned to them, and writers are
+   * expected to preserve them by materializing them to hidden columns in the data files.
+   */
+  public static final TableConfig<Boolean> ROW_TRACKING_ENABLED =
+      new TableConfig<>(
+          "delta.enableRowTracking",
+          "false",
+          Boolean::valueOf,
+          value -> true,
+          "needs to be a boolean.",
+          true);
+
+  /**
    * The shortest duration we have to keep logically deleted data files around before deleting them
    * physically.
    *
@@ -164,6 +213,19 @@ public class TableConfig<T> {
   public static final TableConfig<Boolean> ICEBERG_COMPAT_V2_ENABLED =
       new TableConfig<>(
           "delta.enableIcebergCompatV2",
+          "false",
+          Boolean::valueOf,
+          value -> true,
+          "needs to be a boolean.",
+          true);
+
+  /**
+   * Whether widening the type of an existing column or field is allowed, either manually using
+   * ALTER TABLE CHANGE COLUMN or automatically if automatic schema evolution is enabled.
+   */
+  public static final TableConfig<Boolean> ENABLE_TYPE_WIDENING =
+      new TableConfig<>(
+          "delta.enableTypeWidening",
           "false",
           Boolean::valueOf,
           value -> true,

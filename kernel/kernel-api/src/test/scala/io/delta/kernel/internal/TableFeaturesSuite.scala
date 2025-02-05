@@ -17,7 +17,7 @@ package io.delta.kernel.internal
 
 import io.delta.kernel.data.{ArrayValue, ColumnVector, MapValue}
 import io.delta.kernel.exceptions.KernelException
-import io.delta.kernel.internal.TableFeatures.validateWriteSupportedTable
+import io.delta.kernel.internal.tablefeatures.TableFeatures.validateWriteSupportedTable
 import io.delta.kernel.internal.actions.{Format, Metadata, Protocol}
 import io.delta.kernel.internal.util.InternalUtils.singletonStringColumnVector
 import io.delta.kernel.types._

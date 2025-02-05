@@ -14,11 +14,16 @@
  * limitations under the License.
  */
 
-package io.delta.kernel.internal;
+package io.delta.kernel.internal.tablefeatures;
 
 import static io.delta.kernel.internal.DeltaErrors.*;
 import static io.delta.kernel.internal.TableConfig.IN_COMMIT_TIMESTAMPS_ENABLED;
+import static io.delta.kernel.internal.util.ColumnMapping.ColumnMappingMode.NONE;
+import static java.util.Arrays.asList;
+import static java.util.Collections.emptyList;
 
+import io.delta.kernel.internal.DeltaErrors;
+import io.delta.kernel.internal.TableConfig;
 import io.delta.kernel.internal.actions.Metadata;
 import io.delta.kernel.internal.actions.Protocol;
 import io.delta.kernel.internal.util.ColumnMapping;
@@ -29,6 +34,204 @@ import java.util.stream.Collectors;
 
 /** Contains utility methods related to the Delta table feature support in protocol. */
 public class TableFeatures {
+
+  //////////////////////////////////////////////////////////////////////
+  /// Define the {@link TableFeature}s that are supported by Kernel  ///
+  //////////////////////////////////////////////////////////////////////
+  static TableFeature APPEND_ONLY_FEATURE =
+      new TableFeature(
+          /* featureName = */ "appendOnly",
+          /* minReaderVersion = */ 0,
+          /* minWriterVersion = */ 2,
+          /* readerWriterFeature = */ false,
+          /* isLegacyFeature = */ true,
+          /* requiredFeatures = */ emptyList(),
+          /* featureAutoEnablementByMetadata = */ Optional.of(
+              (protocol, metadata) -> TableConfig.APPEND_ONLY.fromMetadata(metadata)));
+
+  static TableFeature INVARIANTS_TABLE_FEATURE =
+      new TableFeature(
+          /* featureName = */ "invariants",
+          /* minReaderVersion = */ 0,
+          /* minWriterVersion = */ 2,
+          /* readerWriterFeature = */ false,
+          /* isLegacyFeature = */ true,
+          /* requiredFeatures = */ emptyList(),
+          /* featureAutoEnablementByMetadata = */ Optional.of(
+              (protocol, metadata) -> hasInvariants(metadata.getSchema())));
+
+  static TableFeature CHECK_CONSTRAINTS_TABLE_FEATURE =
+      new TableFeature(
+          /* featureName = */ "checkConstraints",
+          /* minReaderVersion = */ 0,
+          /* minWriterVersion = */ 3,
+          /* readerWriterFeature = */ false,
+          /* isLegacyFeature = */ true,
+          /* requiredFeatures = */ emptyList(),
+          /* featureAutoEnablementByMetadata = */ Optional.of(
+              (protocol, metadata) -> hasCheckConstraints(metadata)));
+
+  static TableFeature CHANGE_DATA_FEED_TABLE_FEATURE =
+      new TableFeature(
+          /* featureName = */ "changeDataFeed",
+          /* minReaderVersion = */ 0,
+          /* minWriterVersion = */ 3,
+          /* readerWriterFeature = */ false,
+          /* isLegacyFeature = */ true,
+          /* requiredFeatures = */ emptyList(),
+          /* featureAutoEnablementByMetadata = */ Optional.of(
+              (protocol, metadata) -> TableConfig.CHANGE_DATA_FEED.fromMetadata(metadata)));
+
+  static TableFeature COLUMN_MAPPING_TABLE_FEATURE =
+      new TableFeature(
+          /* featureName = */ "columnMapping",
+          /* minReaderVersion = */ 2,
+          /* minWriterVersion = */ 5,
+          /* readerWriterFeature = */ true,
+          /* isLegacyFeature = */ true,
+          /* requiredFeatures = */ emptyList(),
+          /* featureAutoEnablementByMetadata = */ Optional.of(
+              (protocol, metadata) ->
+                  TableConfig.COLUMN_MAPPING_MODE.fromMetadata(metadata) != NONE));
+
+  static TableFeature TIMESTAMP_NTZ_TABLE_FEATURE =
+      new TableFeature(
+          /* featureName = */ "timestampNtz",
+          /* minReaderVersion = */ 3,
+          /* minWriterVersion = */ 7,
+          /* readerWriterFeature = */ true,
+          /* isLegacyFeature = */ false,
+          /* requiredFeatures = */ emptyList(),
+          /* featureAutoEnablementByMetadata = */ Optional.of(
+              (protocol, metadata) -> {
+                // TODO: check schema recursively for variant types
+                return true;
+              }));
+
+  static TableFeature VARIANT_TABLE_FEATURE =
+      new TableFeature(
+          /* featureName = */ "variantType",
+          /* minReaderVersion = */ 3,
+          /* minWriterVersion = */ 7,
+          /* readerWriterFeature = */ true,
+          /* isLegacyFeature = */ false,
+          /* requiredFeatures = */ emptyList(),
+          /* featureAutoEnablementByMetadata = */ Optional.of(
+              (protocol, metadata) -> {
+                // TODO: check schema recursively for variant types
+                return true;
+              }));
+
+  static TableFeature VARIANT_PREVIEW_TABLE_FEATURE =
+      new TableFeature(
+          /* featureName = */ "variantType-preview",
+          /* minReaderVersion = */ 3,
+          /* minWriterVersion = */ 7,
+          /* readerWriterFeature = */ true,
+          /* isLegacyFeature = */ false,
+          /* requiredFeatures = */ emptyList(),
+          /* featureAutoEnablementByMetadata = */ Optional.of(
+              (protocol, metadata) -> {
+                // TODO: check schema recursively for variant types
+                return true;
+              }));
+
+  static TableFeature DELETION_VECTORS_TABLE_FEATURE =
+      new TableFeature(
+          /* featureName = */ "deletionVectors",
+          /* minReaderVersion = */ 3,
+          /* minWriterVersion = */ 7,
+          /* readerWriterFeature = */ true,
+          /* isLegacyFeature = */ false,
+          /* requiredFeatures = */ emptyList(),
+          /* featureAutoEnablementByMetadata = */ Optional.of(
+              (protocol, metadata) ->
+                  TableConfig.ENABLE_DELETION_VECTORS_CREATION.fromMetadata(metadata)));
+
+  static TableFeature DOMAIN_METADATA_TABLE_FEATURE =
+      new TableFeature(
+          /* featureName = */ "domainMetadata",
+          /* minReaderVersion = */ 3,
+          /* minWriterVersion = */ 7,
+          /* readerWriterFeature = */ false,
+          /* isLegacyFeature = */ false,
+          /* requiredFeatures = */ emptyList(),
+          /* featureAutoEnablementByMetadata = */ Optional.empty());
+
+  static TableFeature ROW_TRACKING_TABLE_FEATURE =
+      new TableFeature(
+          /* featureName = */ "rowTracking",
+          /* minReaderVersion = */ 3,
+          /* minWriterVersion = */ 7,
+          /* readerWriterFeature = */ false,
+          /* isLegacyFeature = */ false,
+          /* requiredFeatures = */ asList(DOMAIN_METADATA_TABLE_FEATURE),
+          /* featureAutoEnablementByMetadata = */ Optional.of(
+              (protocol, metadata) -> TableConfig.ROW_TRACKING_ENABLED.fromMetadata(metadata)));
+
+  static TableFeature ICEBERG_COMPAT_V2_TABLE_FEATURE =
+      new TableFeature(
+          /* featureName = */ "icebergCompatV2",
+          /* minReaderVersion = */ 3,
+          /* minWriterVersion = */ 7,
+          /* readerWriterFeature = */ false,
+          /* isLegacyFeature = */ false,
+          /* requiredFeatures = */ asList(COLUMN_MAPPING_TABLE_FEATURE),
+          /* featureAutoEnablementByMetadata = */ Optional.of(
+              (protocol, metadata) ->
+                  TableConfig.ICEBERG_COMPAT_V2_ENABLED.fromMetadata(metadata)));
+
+  static TableFeature TYPE_WIDENING_TABLE_FEATURE =
+      new TableFeature(
+          /* featureName = */ "typeWidening",
+          /* minReaderVersion = */ 3,
+          /* minWriterVersion = */ 7,
+          /* readerWriterFeature = */ true,
+          /* isLegacyFeature = */ false,
+          /* requiredFeatures = */ emptyList(),
+          /* featureAutoEnablementByMetadata = */ Optional.of(
+              (protocol, metadata) -> {
+                return TableConfig.ENABLE_TYPE_WIDENING.fromMetadata(metadata);
+                // TODO: there is more. Need to check if any of the fields
+                // have the metadata field "delta.typeWidening"
+              }));
+
+  static TableFeature TYPE_WIDENING_PREVIEW_TABLE_FEATURE =
+      new TableFeature(
+          /* featureName = */ "typeWidening",
+          /* minReaderVersion = */ 3,
+          /* minWriterVersion = */ 7,
+          /* readerWriterFeature = */ true,
+          /* isLegacyFeature = */ false,
+          /* requiredFeatures = */ emptyList(),
+          /* featureAutoEnablementByMetadata = */ Optional.of(
+              (protocol, metadata) -> {
+                return TableConfig.ENABLE_TYPE_WIDENING.fromMetadata(metadata);
+                // TODO: there is more. Need to check if any of the fields
+                // have the metadata field "delta.typeWidening"
+              }));
+
+  static TableFeature IN_COMMIT_TIMESTAMP_TABLE_FEATURE =
+      new TableFeature(
+          /* featureName = */ "inCommitTimestamp",
+          /* minReaderVersion = */ 3,
+          /* minWriterVersion = */ 7,
+          /* readerWriterFeature = */ false,
+          /* isLegacyFeature = */ false,
+          /* requiredFeatures = */ emptyList(),
+          /* featureAutoEnablementByMetadata = */ Optional.of(
+              (protocol, metadata) ->
+                  TableConfig.IN_COMMIT_TIMESTAMPS_ENABLED.fromMetadata(metadata)));
+
+  static TableFeature VACUUM_PROTOCOL_CHECK_TABLE_FEATURE =
+      new TableFeature(
+          /* featureName = */ "vacuumProtocolCheck",
+          /* minReaderVersion = */ 3,
+          /* minWriterVersion = */ 7,
+          /* readerWriterFeature = */ true,
+          /* isLegacyFeature = */ false,
+          /* requiredFeatures = */ emptyList(),
+          /* featureAutoEnablementByMetadata = */ Optional.empty());
 
   private static final Set<String> SUPPORTED_WRITER_FEATURES =
       Collections.unmodifiableSet(
@@ -268,12 +471,21 @@ public class TableFeatures {
   }
 
   private static void validateNoInvariants(StructType tableSchema) {
-    boolean hasInvariants =
-        tableSchema.fields().stream()
-            .anyMatch(field -> field.getMetadata().contains("delta.invariants"));
-    if (hasInvariants) {
+    if (hasInvariants(tableSchema)) {
       throw columnInvariantsNotSupported();
     }
+  }
+
+  private static boolean hasInvariants(StructType tableSchema) {
+    return tableSchema.fields().stream()
+        .anyMatch(field -> field.getMetadata().contains("delta.invariants"));
+  }
+
+  private static boolean hasCheckConstraints(Metadata metadata) {
+    return metadata.getConfiguration().entrySet().stream()
+        .findAny()
+        .map(entry -> entry.getKey().equals("delta.constraints."))
+        .orElse(false);
   }
 
   private static boolean isWriterFeatureSupported(Protocol protocol, String featureName) {

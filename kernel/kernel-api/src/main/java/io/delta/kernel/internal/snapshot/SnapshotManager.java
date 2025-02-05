@@ -19,9 +19,9 @@ package io.delta.kernel.internal.snapshot;
 import static io.delta.kernel.internal.DeltaErrors.wrapEngineExceptionThrowsIO;
 import static io.delta.kernel.internal.TableConfig.EXPIRED_LOG_CLEANUP_ENABLED;
 import static io.delta.kernel.internal.TableConfig.LOG_RETENTION;
-import static io.delta.kernel.internal.TableFeatures.validateWriteSupportedTable;
 import static io.delta.kernel.internal.replay.LogReplayUtils.assertLogFilesBelongToTable;
 import static io.delta.kernel.internal.snapshot.MetadataCleanup.cleanupExpiredLogs;
+import static io.delta.kernel.internal.tablefeatures.TableFeatures.validateWriteSupportedTable;
 import static io.delta.kernel.internal.util.Preconditions.checkArgument;
 import static java.lang.String.format;
 
