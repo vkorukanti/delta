@@ -17,10 +17,11 @@
 package io.delta.kernel.internal.tablefeatures;
 
 import static io.delta.kernel.internal.DeltaErrors.*;
+import static io.delta.kernel.internal.TableConfig.APPEND_ONLY;
+import static io.delta.kernel.internal.TableConfig.COLUMN_MAPPING_MODE;
 import static io.delta.kernel.internal.TableConfig.IN_COMMIT_TIMESTAMPS_ENABLED;
+import static io.delta.kernel.internal.TableConfig.ROW_TRACKING_ENABLED;
 import static io.delta.kernel.internal.util.ColumnMapping.ColumnMappingMode.NONE;
-import static java.util.Arrays.asList;
-import static java.util.Collections.emptyList;
 
 import io.delta.kernel.internal.DeltaErrors;
 import io.delta.kernel.internal.TableConfig;
@@ -38,200 +39,211 @@ public class TableFeatures {
   //////////////////////////////////////////////////////////////////////
   /// Define the {@link TableFeature}s that are supported by Kernel  ///
   //////////////////////////////////////////////////////////////////////
-  static TableFeature APPEND_ONLY_FEATURE =
-      new TableFeature(
-          /* featureName = */ "appendOnly",
-          /* minReaderVersion = */ 0,
-          /* minWriterVersion = */ 2,
-          /* readerWriterFeature = */ false,
-          /* isLegacyFeature = */ true,
-          /* requiredFeatures = */ emptyList(),
-          /* featureAutoEnablementByMetadata = */ Optional.of(
-              (protocol, metadata) -> TableConfig.APPEND_ONLY.fromMetadata(metadata)));
+  /** An interface to indicate a feature is legacy, i.e., released before Table Features. */
+  public interface LegacyFeatureType extends FeatureAutoEnabledByMetadata {
+    @Override
+    default boolean automaticallyUpdateProtocolOfExistingTables() {
+      return true; // legacy features can always be applied to existing tables
+    }
+  }
 
-  static TableFeature INVARIANTS_TABLE_FEATURE =
-      new TableFeature(
-          /* featureName = */ "invariants",
-          /* minReaderVersion = */ 0,
-          /* minWriterVersion = */ 2,
-          /* readerWriterFeature = */ false,
-          /* isLegacyFeature = */ true,
-          /* requiredFeatures = */ emptyList(),
-          /* featureAutoEnablementByMetadata = */ Optional.of(
-              (protocol, metadata) -> hasInvariants(metadata.getSchema())));
+  /** An interface to indicate a feature applies to readers and writers. */
+  public interface ReaderWriterFeatureType {}
 
-  static TableFeature CHECK_CONSTRAINTS_TABLE_FEATURE =
-      new TableFeature(
-          /* featureName = */ "checkConstraints",
-          /* minReaderVersion = */ 0,
-          /* minWriterVersion = */ 3,
-          /* readerWriterFeature = */ false,
-          /* isLegacyFeature = */ true,
-          /* requiredFeatures = */ emptyList(),
-          /* featureAutoEnablementByMetadata = */ Optional.of(
-              (protocol, metadata) -> hasCheckConstraints(metadata)));
+  /** A base class for all table legacy writer-only features. */
+  public abstract static class LegacyWriterFeature extends BaseTableFeatureImpl
+      implements LegacyFeatureType {
+    public LegacyWriterFeature(String featureName, int minWriterVersion) {
+      super(featureName, /* minReaderVersion = */ 0, minWriterVersion);
+    }
+  }
 
-  static TableFeature CHANGE_DATA_FEED_TABLE_FEATURE =
-      new TableFeature(
-          /* featureName = */ "changeDataFeed",
-          /* minReaderVersion = */ 0,
-          /* minWriterVersion = */ 3,
-          /* readerWriterFeature = */ false,
-          /* isLegacyFeature = */ true,
-          /* requiredFeatures = */ emptyList(),
-          /* featureAutoEnablementByMetadata = */ Optional.of(
-              (protocol, metadata) -> TableConfig.CHANGE_DATA_FEED.fromMetadata(metadata)));
+  /** A base class for all table legacy reader-writer features. */
+  public abstract static class LegacyReaderWriterFeature extends BaseTableFeatureImpl
+      implements LegacyFeatureType {
+    public LegacyReaderWriterFeature(
+        String featureName, int minReaderVersion, int minWriterVersion) {
+      super(featureName, minReaderVersion, minWriterVersion);
+    }
+  }
 
-  static TableFeature COLUMN_MAPPING_TABLE_FEATURE =
-      new TableFeature(
+  /** A base class for all non-legacy table writer features. */
+  public static class WriterFeature extends BaseTableFeatureImpl {
+    public WriterFeature(String featureName, int minWriterVersion) {
+      super(featureName, /* minReaderVersion = */ 0, minWriterVersion);
+    }
+  }
+
+  /** A base class for all non-legacy table reader-writer features. */
+  public static class ReaderWriterFeature extends BaseTableFeatureImpl
+      implements ReaderWriterFeatureType {
+    public ReaderWriterFeature(String featureName, int minReaderVersion, int minWriterVersion) {
+      super(featureName, minReaderVersion, minWriterVersion);
+    }
+  }
+
+  public static final TableFeature APPEND_ONLY_FEATURE = new AppendOnlyFeature();
+
+  private static class AppendOnlyFeature extends LegacyWriterFeature {
+    AppendOnlyFeature() {
+      super(/* featureName = */ "appendOnly", /* minWriterVersion = */ 2);
+    }
+
+    @Override
+    public boolean metadataRequiresFeatureToBeEnabled(Protocol protocol, Metadata metadata) {
+      return APPEND_ONLY.fromMetadata(metadata);
+    }
+  }
+
+  public static final TableFeature INVARIANTS_FEATURE = new InvariantsFeature();
+
+  private static class InvariantsFeature extends LegacyWriterFeature {
+    InvariantsFeature() {
+      super(/* featureName = */ "invariants", /* minWriterVersion = */ 2);
+    }
+
+    @Override
+    public boolean metadataRequiresFeatureToBeEnabled(Protocol protocol, Metadata metadata) {
+      return hasInvariants(metadata.getSchema());
+    }
+  }
+
+  public static final TableFeature COLUMN_MAPPING_FEATURE = new ColumnMappingFeature();
+
+  private static class ColumnMappingFeature extends LegacyReaderWriterFeature {
+    ColumnMappingFeature() {
+      super(
           /* featureName = */ "columnMapping",
           /* minReaderVersion = */ 2,
-          /* minWriterVersion = */ 5,
-          /* readerWriterFeature = */ true,
-          /* isLegacyFeature = */ true,
-          /* requiredFeatures = */ emptyList(),
-          /* featureAutoEnablementByMetadata = */ Optional.of(
-              (protocol, metadata) ->
-                  TableConfig.COLUMN_MAPPING_MODE.fromMetadata(metadata) != NONE));
+          /* minWriterVersion = */ 5);
+    }
 
-  static TableFeature TIMESTAMP_NTZ_TABLE_FEATURE =
-      new TableFeature(
-          /* featureName = */ "timestampNtz",
-          /* minReaderVersion = */ 3,
-          /* minWriterVersion = */ 7,
-          /* readerWriterFeature = */ true,
-          /* isLegacyFeature = */ false,
-          /* requiredFeatures = */ emptyList(),
-          /* featureAutoEnablementByMetadata = */ Optional.of(
-              (protocol, metadata) -> {
-                // TODO: check schema recursively for variant types
-                return true;
-              }));
+    @Override
+    public boolean metadataRequiresFeatureToBeEnabled(Protocol protocol, Metadata metadata) {
+      return COLUMN_MAPPING_MODE.fromMetadata(metadata) != NONE;
+    }
+  }
 
-  static TableFeature VARIANT_TABLE_FEATURE =
-      new TableFeature(
-          /* featureName = */ "variantType",
-          /* minReaderVersion = */ 3,
-          /* minWriterVersion = */ 7,
-          /* readerWriterFeature = */ true,
-          /* isLegacyFeature = */ false,
-          /* requiredFeatures = */ emptyList(),
-          /* featureAutoEnablementByMetadata = */ Optional.of(
-              (protocol, metadata) -> {
-                // TODO: check schema recursively for variant types
-                return true;
-              }));
+  public static final TableFeature VARIANT_FEATURE = new VariantTypeTableFeature("variantType");
+  public static final TableFeature VARIANT_PREVIEW_FEATURE =
+      new VariantTypeTableFeature("variantType-preview");
 
-  static TableFeature VARIANT_PREVIEW_TABLE_FEATURE =
-      new TableFeature(
-          /* featureName = */ "variantType-preview",
-          /* minReaderVersion = */ 3,
-          /* minWriterVersion = */ 7,
-          /* readerWriterFeature = */ true,
-          /* isLegacyFeature = */ false,
-          /* requiredFeatures = */ emptyList(),
-          /* featureAutoEnablementByMetadata = */ Optional.of(
-              (protocol, metadata) -> {
-                // TODO: check schema recursively for variant types
-                return true;
-              }));
+  static class VariantTypeTableFeature extends ReaderWriterFeature
+      implements FeatureAutoEnabledByMetadata {
+    VariantTypeTableFeature(String featureName) {
+      super(
+          /* featureName = */ featureName, /* minReaderVersion = */ 3, /* minWriterVersion = */ 7);
+    }
 
-  static TableFeature DELETION_VECTORS_TABLE_FEATURE =
-      new TableFeature(
-          /* featureName = */ "deletionVectors",
-          /* minReaderVersion = */ 3,
-          /* minWriterVersion = */ 7,
-          /* readerWriterFeature = */ true,
-          /* isLegacyFeature = */ false,
-          /* requiredFeatures = */ emptyList(),
-          /* featureAutoEnablementByMetadata = */ Optional.of(
-              (protocol, metadata) ->
-                  TableConfig.ENABLE_DELETION_VECTORS_CREATION.fromMetadata(metadata)));
+    @Override
+    public boolean automaticallyUpdateProtocolOfExistingTables() {
+      return true;
+    }
 
-  static TableFeature DOMAIN_METADATA_TABLE_FEATURE =
-      new TableFeature(
-          /* featureName = */ "domainMetadata",
-          /* minReaderVersion = */ 3,
-          /* minWriterVersion = */ 7,
-          /* readerWriterFeature = */ false,
-          /* isLegacyFeature = */ false,
-          /* requiredFeatures = */ emptyList(),
-          /* featureAutoEnablementByMetadata = */ Optional.empty());
+    @Override
+    public boolean metadataRequiresFeatureToBeEnabled(Protocol protocol, Metadata metadata) {
+      // TODO: check schema recursively for variant types
+      return false;
+    }
+  }
 
-  static TableFeature ROW_TRACKING_TABLE_FEATURE =
-      new TableFeature(
-          /* featureName = */ "rowTracking",
-          /* minReaderVersion = */ 3,
-          /* minWriterVersion = */ 7,
-          /* readerWriterFeature = */ false,
-          /* isLegacyFeature = */ false,
-          /* requiredFeatures = */ asList(DOMAIN_METADATA_TABLE_FEATURE),
-          /* featureAutoEnablementByMetadata = */ Optional.of(
-              (protocol, metadata) -> TableConfig.ROW_TRACKING_ENABLED.fromMetadata(metadata)));
+  public static final TableFeature DOMAIN_METADATA_FEATURE =
+      new WriterFeature("domainMetadata", /* minWriterVersion = */ 7);
 
-  static TableFeature ICEBERG_COMPAT_V2_TABLE_FEATURE =
-      new TableFeature(
-          /* featureName = */ "icebergCompatV2",
-          /* minReaderVersion = */ 3,
-          /* minWriterVersion = */ 7,
-          /* readerWriterFeature = */ false,
-          /* isLegacyFeature = */ false,
-          /* requiredFeatures = */ asList(COLUMN_MAPPING_TABLE_FEATURE),
-          /* featureAutoEnablementByMetadata = */ Optional.of(
-              (protocol, metadata) ->
-                  TableConfig.ICEBERG_COMPAT_V2_ENABLED.fromMetadata(metadata)));
+  public static final TableFeature ROW_TRACKING_FEATURE = new RowTrackingFeature();
 
-  static TableFeature TYPE_WIDENING_TABLE_FEATURE =
-      new TableFeature(
-          /* featureName = */ "typeWidening",
-          /* minReaderVersion = */ 3,
-          /* minWriterVersion = */ 7,
-          /* readerWriterFeature = */ true,
-          /* isLegacyFeature = */ false,
-          /* requiredFeatures = */ emptyList(),
-          /* featureAutoEnablementByMetadata = */ Optional.of(
-              (protocol, metadata) -> {
-                return TableConfig.ENABLE_TYPE_WIDENING.fromMetadata(metadata);
-                // TODO: there is more. Need to check if any of the fields
-                // have the metadata field "delta.typeWidening"
-              }));
+  private static class RowTrackingFeature extends WriterFeature
+      implements FeatureAutoEnabledByMetadata {
+    RowTrackingFeature() {
+      super("rowTracking", /* minWriterVersion = */ 7);
+    }
 
-  static TableFeature TYPE_WIDENING_PREVIEW_TABLE_FEATURE =
-      new TableFeature(
-          /* featureName = */ "typeWidening",
-          /* minReaderVersion = */ 3,
-          /* minWriterVersion = */ 7,
-          /* readerWriterFeature = */ true,
-          /* isLegacyFeature = */ false,
-          /* requiredFeatures = */ emptyList(),
-          /* featureAutoEnablementByMetadata = */ Optional.of(
-              (protocol, metadata) -> {
-                return TableConfig.ENABLE_TYPE_WIDENING.fromMetadata(metadata);
-                // TODO: there is more. Need to check if any of the fields
-                // have the metadata field "delta.typeWidening"
-              }));
+    @Override
+    public boolean automaticallyUpdateProtocolOfExistingTables() {
+      return true;
+    }
 
-  static TableFeature IN_COMMIT_TIMESTAMP_TABLE_FEATURE =
-      new TableFeature(
-          /* featureName = */ "inCommitTimestamp",
-          /* minReaderVersion = */ 3,
-          /* minWriterVersion = */ 7,
-          /* readerWriterFeature = */ false,
-          /* isLegacyFeature = */ false,
-          /* requiredFeatures = */ emptyList(),
-          /* featureAutoEnablementByMetadata = */ Optional.of(
-              (protocol, metadata) ->
-                  TableConfig.IN_COMMIT_TIMESTAMPS_ENABLED.fromMetadata(metadata)));
+    @Override
+    public boolean metadataRequiresFeatureToBeEnabled(Protocol protocol, Metadata metadata) {
+      return ROW_TRACKING_ENABLED.fromMetadata(metadata);
+    }
 
-  static TableFeature VACUUM_PROTOCOL_CHECK_TABLE_FEATURE =
-      new TableFeature(
-          /* featureName = */ "vacuumProtocolCheck",
-          /* minReaderVersion = */ 3,
-          /* minWriterVersion = */ 7,
-          /* readerWriterFeature = */ true,
-          /* isLegacyFeature = */ false,
-          /* requiredFeatures = */ emptyList(),
-          /* featureAutoEnablementByMetadata = */ Optional.empty());
+    @Override
+    public Set<TableFeature> requiredFeatures() {
+      return Collections.singleton(DOMAIN_METADATA_FEATURE);
+    }
+  }
+
+  public static final TableFeature ICEBERG_COMPAT_V2_TABLE_FEATURE =
+      new IcebergCompatV2TableFeature();
+
+  private static class IcebergCompatV2TableFeature extends WriterFeature
+      implements FeatureAutoEnabledByMetadata {
+    IcebergCompatV2TableFeature() {
+      super("icebergCompatV2", /* minWriterVersion = */ 7);
+    }
+
+    @Override
+    public boolean automaticallyUpdateProtocolOfExistingTables() {
+      return true;
+    }
+
+    @Override
+    public boolean metadataRequiresFeatureToBeEnabled(Protocol protocol, Metadata metadata) {
+      return TableConfig.ICEBERG_COMPAT_V2_ENABLED.fromMetadata(metadata);
+    }
+
+    public @Override Set<TableFeature> requiredFeatures() {
+      return Collections.singleton(COLUMN_MAPPING_FEATURE);
+    }
+  }
+
+  public static final TableFeature TYPE_WIDENING_TABLE_FEATURE =
+      new TypeWideningTableFeature("typeWidening");
+  public static final TableFeature TYPE_WIDENING_PREVIEW_TABLE_FEATURE =
+      new TypeWideningTableFeature("typeWidening-preview");
+
+  private static class TypeWideningTableFeature extends ReaderWriterFeature
+      implements FeatureAutoEnabledByMetadata {
+    TypeWideningTableFeature(String featureName) {
+      super(featureName, /* minReaderVersion = */ 3, /* minWriterVersion = */ 7);
+    }
+
+    @Override
+    public boolean automaticallyUpdateProtocolOfExistingTables() {
+      return true;
+    }
+
+    @Override
+    public boolean metadataRequiresFeatureToBeEnabled(Protocol protocol, Metadata metadata) {
+      return TableConfig.ENABLE_TYPE_WIDENING.fromMetadata(metadata);
+      // TODO: there is more. Need to check if any of the fields
+    }
+  }
+
+  public static final TableFeature IN_COMMIT_TIMESTAMP_FEATURE =
+      new InCommitTimestampTableFeature();
+
+  private static class InCommitTimestampTableFeature extends WriterFeature
+      implements FeatureAutoEnabledByMetadata {
+    InCommitTimestampTableFeature() {
+      super("inCommitTimestamp", /* minWriterVersion = */ 7);
+    }
+
+    @Override
+    public boolean automaticallyUpdateProtocolOfExistingTables() {
+      return true;
+    }
+
+    @Override
+    public boolean metadataRequiresFeatureToBeEnabled(Protocol protocol, Metadata metadata) {
+      return IN_COMMIT_TIMESTAMPS_ENABLED.fromMetadata(metadata);
+    }
+  }
+
+  public static final TableFeature VACUUM_PROTOCOL_CHECK_TABLE_FEATURE =
+      new ReaderWriterFeature(
+          "vacuumProtocolCheck", /* minReaderVersion = */ 3, /* minWriterVersion = */ 7);
 
   private static final Set<String> SUPPORTED_WRITER_FEATURES =
       Collections.unmodifiableSet(
@@ -242,8 +254,8 @@ public class TableFeatures {
               add("columnMapping");
               add("typeWidening-preview");
               add("typeWidening");
-              add(DOMAIN_METADATA_FEATURE_NAME);
-              add(ROW_TRACKING_FEATURE_NAME);
+              add("domainMetadata");
+              add("rowTracking");
             }
           });
 
@@ -263,19 +275,9 @@ public class TableFeatures {
             }
           });
 
-  public static final String DOMAIN_METADATA_FEATURE_NAME = "domainMetadata";
-
-  public static final String ROW_TRACKING_FEATURE_NAME = "rowTracking";
-
-  public static final String INVARIANTS_FEATURE_NAME = "invariants";
-
-  /** The minimum writer version required to support table features. */
-  public static final int TABLE_FEATURES_MIN_WRITER_VERSION = 7;
-
   ////////////////////
   // Helper Methods //
   ////////////////////
-
   public static void validateReadSupportedTable(
       Protocol protocol, String tablePath, Optional<Metadata> metadata) {
     switch (protocol.getMinReaderVersion()) {
@@ -341,7 +343,7 @@ public class TableFeatures {
         throw unsupportedWriterProtocol(tablePath, minWriterVersion);
       case 7:
         for (String writerFeature : protocol.getWriterFeatures()) {
-          if (writerFeature.equals(INVARIANTS_FEATURE_NAME)) {
+          if (writerFeature.equals("invariants")) {
             // For version 7, we allow 'invariants' to be present in the protocol's writerFeatures
             // to unblock certain use cases, provided that no invariants are defined in the schema.
             validateNoInvariants(tableSchema);
@@ -409,7 +411,7 @@ public class TableFeatures {
    * @return true if the "domainMetadata" feature is supported, false otherwise
    */
   public static boolean isDomainMetadataSupported(Protocol protocol) {
-    return isWriterFeatureSupported(protocol, DOMAIN_METADATA_FEATURE_NAME);
+    return isWriterFeatureSupported(protocol, "domainMetadata");
   }
 
   /**
@@ -419,7 +421,7 @@ public class TableFeatures {
    * @return true if the protocol supports row tracking, false otherwise
    */
   public static boolean isRowTrackingSupported(Protocol protocol) {
-    return isWriterFeatureSupported(protocol, ROW_TRACKING_FEATURE_NAME);
+    return isWriterFeatureSupported(protocol, "rowTracking");
   }
 
   /**
@@ -493,7 +495,6 @@ public class TableFeatures {
     if (writerFeatures == null) {
       return false;
     }
-    return writerFeatures.contains(featureName)
-        && protocol.getMinWriterVersion() >= TABLE_FEATURES_MIN_WRITER_VERSION;
+    return writerFeatures.contains(featureName) && protocol.getMinWriterVersion() >= 7;
   }
 }

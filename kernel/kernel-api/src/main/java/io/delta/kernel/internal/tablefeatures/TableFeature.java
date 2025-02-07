@@ -16,11 +16,8 @@
 package io.delta.kernel.internal.tablefeatures;
 
 import static io.delta.kernel.internal.util.Preconditions.checkArgument;
-import static java.util.Objects.requireNonNull;
 
-import java.util.Collections;
-import java.util.List;
-import java.util.Optional;
+import java.util.Set;
 
 /**
  * Base class for table features.
@@ -43,106 +40,50 @@ import java.util.Optional;
  * the feature (at least to the extent that they can read and preserve the existing data in the
  * table that uses the feature).
  */
-public class TableFeature {
-  private final String featureName;
-  private final int minReaderVersion;
-  private final int minWriterVersion;
-  private final boolean readerWriterFeature;
-  private final boolean isLegacyFeature;
-  private final List<TableFeature> requiredFeatures;
-  private final Optional<FeatureAutoEnablementByMetadata> featureAutoEnablementByMetadata;
+public interface TableFeature {
 
-  /**
-   * Create a new table feature.
-   *
-   * @param featureName a globally-unique string indicator to represent the feature. All characters
-   *     must be letters (a-z, A-Z), digits (0-9), '-', or '_'. Words must be in camelCase.
-   * @param minReaderVersion the minimum reader version this feature requires. For a feature that
-   *     can only be explicitly supported, this is either `0` or `3` (the reader protocol version
-   *     that supports table features), depending on the feature is writer-only or reader-writer.
-   *     For a legacy feature that can be implicitly supported, this is the first protocol version
-   *     which the feature is introduced.
-   * @param minWriterVersion the minimum writer version this feature requires. For a feature that
-   *     can only be explicitly supported, this is the writer protocol `7` that supports table
-   *     features. For a legacy feature that can be implicitly supported, this is the first protocol
-   *     version which the feature is introduced.
-   * @param isLegacyTableFeature this feature is a legacy feature? i.e a feature that released
-   *     before Delta Table Features (reader version 3 and writer version 7).
-   * @param requiredFeatures Set of table features that this table feature depends on. I.e. the set
-   *     of features that need to be enabled if this table feature is enabled.
-   */
-  public TableFeature(
-      String featureName,
-      int minReaderVersion,
-      int minWriterVersion,
-      boolean readerWriterFeature,
-      boolean isLegacyTableFeature,
-      List<TableFeature> requiredFeatures,
-      Optional<FeatureAutoEnablementByMetadata> featureAutoEnablementByMetadata) {
-    this.featureName = requireNonNull(featureName, "name is null");
-    checkArgument(!featureName.isEmpty(), "name is empty");
-    checkArgument(
-        featureName.chars().allMatch(c -> Character.isLetterOrDigit(c) || c == '-' || c == '_'),
-        "name contains invalid characters: " + featureName);
-    this.minReaderVersion = minReaderVersion;
-    this.minWriterVersion = minWriterVersion;
-    if (!readerWriterFeature) {
-      checkArgument(minReaderVersion == 0, "Writer-only feature must have minReaderVersion=0");
-    }
-    this.readerWriterFeature = readerWriterFeature;
-    this.isLegacyFeature = isLegacyTableFeature;
-    this.requiredFeatures =
-        Collections.unmodifiableList(requireNonNull(requiredFeatures, "requiredFeatures is null"));
-    this.featureAutoEnablementByMetadata =
-        requireNonNull(featureAutoEnablementByMetadata, "featureAutoEnablementByMetadata is null");
-
-    featureAutoEnablementByMetadata.ifPresent(
-        autoEnablementByMetadata -> {
-          checkArgument(
-              isLegacyFeature()
-                  && autoEnablementByMetadata.automaticallyUpdateProtocolOfExistingTables(),
-              "Legacy feature must be auto-update capable.");
-        });
-  }
   /** @return the name of the table feature. */
-  String featureName() {
-    return featureName;
-  }
+  String featureName();
 
   /**
    * @return true if this feature is applicable to both reader and writer, false if it is
    *     writer-only.
    */
-  boolean isReaderWriterFeature() {
-    return readerWriterFeature;
-  }
+  boolean isReaderWriterFeature();
 
   /** @return the minimum reader version this feature requires */
-  int minReaderVersion() {
-    return minReaderVersion;
-  }
+  int minReaderVersion();
 
   /** @return the minimum writer version that this feature requires. */
-  int minWriterVersion() {
-    return minWriterVersion;
-  }
+  int minWriterVersion();
 
   /** @return if this feature is a legacy feature? */
-  boolean isLegacyFeature() {
-    return isLegacyFeature;
-  }
+  boolean isLegacyFeature();
 
   /**
    * Set of table features that this table feature depends on. I.e. the set of features that need to
    * be enabled if this table feature is enabled.
    *
-   * @return the list of table features that this table feature depends on.
+   * @return the set of table features that this table feature depends on.
    */
-  List<TableFeature> requiredFeatures() {
-    return requiredFeatures;
-  }
+  Set<TableFeature> requiredFeatures();
 
-  Optional<FeatureAutoEnablementByMetadata> featureAutoEnablementByMetadata() {
-    return featureAutoEnablementByMetadata;
+  /**
+   * Validate the table feature. This method should throw an exception if the table feature
+   * properties are invalid. Should be called after the object deriving the {@link TableFeature} is
+   * constructed.
+   */
+  default void validate() {
+    if (!isReaderWriterFeature()) {
+      checkArgument(minReaderVersion() == 0, "Writer-only feature must have minReaderVersion=0");
+    }
+
+    if (isLegacyFeature()) {
+      checkArgument(
+          this instanceof FeatureAutoEnabledByMetadata
+              && ((FeatureAutoEnabledByMetadata) this)
+                  .automaticallyUpdateProtocolOfExistingTables(),
+          "Legacy feature must be auto-enable capable based on metadata");
+    }
   }
 }

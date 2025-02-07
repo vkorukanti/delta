@@ -30,20 +30,21 @@ import io.delta.kernel.internal.actions.Protocol;
  * and/or `writerFeatures`. Otherwise, a proper protocol version bump must be present in the same
  * transaction.
  */
-public interface FeatureAutoEnablementByMetadata {
+public interface FeatureAutoEnabledByMetadata extends TableFeature {
   /**
    * Whether the feature can automatically update the protocol of an existing table when the
    * metadata requirements are satisfied. As a rule of thumb, a table feature that requires explicit
    * operations (e.g., turning on a table property) should set this flag to `true`, while features
    * that are used implicitly (e.g., when using a new data type) should set this flag to `false`.
    */
-  default boolean automaticallyUpdateProtocolOfExistingTables() {
-    return true;
-  }
+  boolean automaticallyUpdateProtocolOfExistingTables();
 
   /**
    * Determine whether the feature must be supported and enabled because its metadata requirements
    * are satisfied.
+   *
+   * @param protocol the protocol of the table for features that are already enabled.
+   * @param metadata the metadata of the table for properties that can enable the feature.
    */
   boolean metadataRequiresFeatureToBeEnabled(Protocol protocol, Metadata metadata);
 }

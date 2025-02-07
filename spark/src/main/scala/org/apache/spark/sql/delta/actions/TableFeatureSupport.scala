@@ -367,6 +367,10 @@ trait TableFeatureSupport { this: Protocol =>
       newProtocol.implicitlyAndExplicitlySupportedFeatures) {
       newProtocol
     } else {
+      // means we have some that is added after table feature support.
+      // Whatever the feature (reader or readerWriter), it is always going to
+      // be have minWriterVersion as 7. Overall required minReaderVersion
+      // should be based on the supported feature requirements.
       Protocol(minReaderVersion, TABLE_FEATURES_MIN_WRITER_VERSION)
         .withFeatures(readerAndWriterFeatures)
     }
