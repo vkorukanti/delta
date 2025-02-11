@@ -16,7 +16,9 @@
 package io.delta.kernel.internal.tablefeatures;
 
 import static io.delta.kernel.internal.util.Preconditions.checkArgument;
+import static java.util.Objects.requireNonNull;
 
+import java.util.Collections;
 import java.util.Set;
 
 /**
@@ -34,31 +36,77 @@ import java.util.Set;
  *
  * <p>Separately, a feature can be automatically supported by a table's metadata when certain
  * feature-specific table properties are set. For example, `changeDataFeed` is automatically
- * supported when there's a table property `delta.enableChangeDataFeed=true`. This is independent of
+ * supported when there's a table property `delta.enableChangeDataFeed=true`. See {@link
+ * FeatureAutoEnabledByMetadata} for details on how to define such features. This is independent of
  * the table's enabled features. When a feature is supported (explicitly or implicitly) by the table
  * protocol but its metadata requirements are not satisfied, then clients still have to understand
  * the feature (at least to the extent that they can read and preserve the existing data in the
  * table that uses the feature).
  */
-public interface TableFeature {
+public abstract class TableFeature {
+  private final String featureName;
+  private final int minReaderVersion;
+  private final int minWriterVersion;
+
+  /**
+   * Constructor. Does validations to make sure:
+   *
+   * <ul>
+   *   <li>Feature name is not null or empty and has valid characters
+   *   <li>minReaderVersion is always 0 for writer features
+   *   <li>all legacy features can be auto applied based on the metadata and protocol
+   *
+   * @param featureName a globally-unique string indicator to represent the feature. All characters
+   *     must be letters (a-z, A-Z), digits (0-9), '-', or '_'. Words must be in camelCase.
+   * @param minReaderVersion the minimum reader version this feature requires. For a feature that
+   *     can only be explicitly supported, this is either `0` or `3` (the reader protocol version
+   *     that supports table features), depending on the feature is writer-only or reader-writer.
+   *     For a legacy feature that can be implicitly supported, this is the first protocol version
+   *     which the feature is introduced.
+   * @param minWriterVersion the minimum writer version this feature requires. For a feature that
+   *     can only be explicitly supported, this is the writer protocol `7` that supports table
+   *     features. For a legacy feature that can be implicitly supported, this is the first protocol
+   *     version which the feature is introduced.
+   */
+  public TableFeature(String featureName, int minReaderVersion, int minWriterVersion) {
+    this.featureName = requireNonNull(featureName, "name is null");
+    checkArgument(!featureName.isEmpty(), "name is empty");
+    checkArgument(
+        featureName.chars().allMatch(c -> Character.isLetterOrDigit(c) || c == '-' || c == '_'),
+        "name contains invalid characters: " + featureName);
+    this.minReaderVersion = minReaderVersion;
+    this.minWriterVersion = minWriterVersion;
+
+    validate();
+  }
 
   /** @return the name of the table feature. */
-  String featureName();
+  public String featureName() {
+    return featureName;
+  }
 
   /**
    * @return true if this feature is applicable to both reader and writer, false if it is
    *     writer-only.
    */
-  boolean isReaderWriterFeature();
+  public boolean isReaderWriterFeature() {
+    return this instanceof TableFeatures.ReaderWriterFeatureType;
+  }
 
   /** @return the minimum reader version this feature requires */
-  int minReaderVersion();
+  public int minReaderVersion() {
+    return minReaderVersion;
+  }
 
   /** @return the minimum writer version that this feature requires. */
-  int minWriterVersion();
+  public int minWriterVersion() {
+    return minWriterVersion;
+  }
 
   /** @return if this feature is a legacy feature? */
-  boolean isLegacyFeature();
+  public boolean isLegacyFeature() {
+    return this instanceof TableFeatures.LegacyFeatureType;
+  }
 
   /**
    * Set of table features that this table feature depends on. I.e. the set of features that need to
@@ -66,14 +114,16 @@ public interface TableFeature {
    *
    * @return the set of table features that this table feature depends on.
    */
-  Set<TableFeature> requiredFeatures();
+  public Set<TableFeature> requiredFeatures() {
+    return Collections.emptySet();
+  }
 
   /**
    * Validate the table feature. This method should throw an exception if the table feature
    * properties are invalid. Should be called after the object deriving the {@link TableFeature} is
    * constructed.
    */
-  default void validate() {
+  private void validate() {
     if (!isReaderWriterFeature()) {
       checkArgument(minReaderVersion() == 0, "Writer-only feature must have minReaderVersion=0");
     }
@@ -86,4 +136,7 @@ public interface TableFeature {
           "Legacy feature must be auto-enable capable based on metadata");
     }
   }
+
+  // Important note: uses the default implementation of `equals` and `hashCode` methods.
+  // We expect that the feature instances are singletons, so we don't need to compare the fields.
 }

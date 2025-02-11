@@ -30,7 +30,7 @@ import io.delta.kernel.internal.actions.Protocol;
  * and/or `writerFeatures`. Otherwise, a proper protocol version bump must be present in the same
  * transaction.
  */
-public interface FeatureAutoEnabledByMetadata extends TableFeature {
+public interface FeatureAutoEnabledByMetadata {
   /**
    * Whether the feature can automatically update the protocol of an existing table when the
    * metadata requirements are satisfied. As a rule of thumb, a table feature that requires explicit

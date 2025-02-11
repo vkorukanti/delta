@@ -27,6 +27,7 @@ import io.delta.kernel.internal.DeltaErrors;
 import io.delta.kernel.internal.TableConfig;
 import io.delta.kernel.internal.actions.Metadata;
 import io.delta.kernel.internal.actions.Protocol;
+import io.delta.kernel.internal.util.CaseInsensitiveMap;
 import io.delta.kernel.internal.util.ColumnMapping;
 import io.delta.kernel.internal.util.Tuple2;
 import io.delta.kernel.types.StructType;
@@ -35,6 +36,12 @@ import java.util.stream.Collectors;
 
 /** Contains utility methods related to the Delta table feature support in protocol. */
 public class TableFeatures {
+
+  /** Min reader version that supports reader features. */
+  public static final int TABLE_FEATURES_MIN_READER_VERSION = 3;
+
+  /** Min reader version that supports writer features. */
+  public static final int TABLE_FEATURES_MIN_WRITER_VERSION = 7;
 
   //////////////////////////////////////////////////////////////////////
   /// Define the {@link TableFeature}s that are supported by Kernel  ///
@@ -51,7 +58,7 @@ public class TableFeatures {
   public interface ReaderWriterFeatureType {}
 
   /** A base class for all table legacy writer-only features. */
-  public abstract static class LegacyWriterFeature extends BaseTableFeatureImpl
+  public abstract static class LegacyWriterFeature extends TableFeature
       implements LegacyFeatureType {
     public LegacyWriterFeature(String featureName, int minWriterVersion) {
       super(featureName, /* minReaderVersion = */ 0, minWriterVersion);
@@ -59,7 +66,7 @@ public class TableFeatures {
   }
 
   /** A base class for all table legacy reader-writer features. */
-  public abstract static class LegacyReaderWriterFeature extends BaseTableFeatureImpl
+  public abstract static class LegacyReaderWriterFeature extends TableFeature
       implements LegacyFeatureType {
     public LegacyReaderWriterFeature(
         String featureName, int minReaderVersion, int minWriterVersion) {
@@ -68,15 +75,14 @@ public class TableFeatures {
   }
 
   /** A base class for all non-legacy table writer features. */
-  public static class WriterFeature extends BaseTableFeatureImpl {
+  public static class WriterFeature extends TableFeature {
     public WriterFeature(String featureName, int minWriterVersion) {
       super(featureName, /* minReaderVersion = */ 0, minWriterVersion);
     }
   }
 
   /** A base class for all non-legacy table reader-writer features. */
-  public static class ReaderWriterFeature extends BaseTableFeatureImpl
-      implements ReaderWriterFeatureType {
+  public static class ReaderWriterFeature extends TableFeature implements ReaderWriterFeatureType {
     public ReaderWriterFeature(String featureName, int minReaderVersion, int minWriterVersion) {
       super(featureName, minReaderVersion, minWriterVersion);
     }
@@ -245,6 +251,193 @@ public class TableFeatures {
       new ReaderWriterFeature(
           "vacuumProtocolCheck", /* minReaderVersion = */ 3, /* minWriterVersion = */ 7);
 
+  public static final List<TableFeature> TABLE_FEATURES =
+      Arrays.asList(
+          APPEND_ONLY_FEATURE,
+          INVARIANTS_FEATURE,
+          COLUMN_MAPPING_FEATURE,
+          VARIANT_FEATURE,
+          VARIANT_PREVIEW_FEATURE,
+          DOMAIN_METADATA_FEATURE,
+          ROW_TRACKING_FEATURE,
+          ICEBERG_COMPAT_V2_TABLE_FEATURE,
+          TYPE_WIDENING_TABLE_FEATURE,
+          TYPE_WIDENING_PREVIEW_TABLE_FEATURE,
+          IN_COMMIT_TIMESTAMP_FEATURE,
+          VACUUM_PROTOCOL_CHECK_TABLE_FEATURE);
+
+  public static final CaseInsensitiveMap<TableFeature> TABLE_FEATURE_MAP =
+      new CaseInsensitiveMap<TableFeature>() {
+        {
+          for (TableFeature feature : TABLE_FEATURES) {
+            put(feature.featureName(), feature);
+          }
+        }
+      };
+
+  /**
+   * Does this protocol reader version support specifying the explicit reader feature set in
+   * protocol?
+   */
+  public static boolean supportsReaderFeatures(int minReaderVersion) {
+    return minReaderVersion >= TABLE_FEATURES_MIN_READER_VERSION;
+  }
+
+  /**
+   * Does this protocol writer version support specifying the explicit writer feature set in
+   * protocol?
+   */
+  public static boolean supportsWriterFeatures(int minWriterVersion) {
+    return minWriterVersion >= TABLE_FEATURES_MIN_WRITER_VERSION;
+  }
+
+  /** Returns the minimum reader/writer versions required to support all provided features. */
+  public static Tuple2<Integer, Integer> minimumRequiredVersions(Set<TableFeature> features) {
+    int minReaderVersion =
+        features.stream().mapToInt(TableFeature::minReaderVersion).max().orElse(0);
+
+    int minWriterVersion =
+        features.stream().mapToInt(TableFeature::minWriterVersion).max().orElse(0);
+
+    return new Tuple2<>(Math.max(minReaderVersion, 1), Math.max(minWriterVersion, 2));
+  }
+
+  /**
+   * Upgrade the current protocol to satisfy all auto-update capable features required by the table
+   * metadata. A Delta error will be thrown if a non-auto-update capable feature is required by the
+   * metadata and not in the resulting protocol, in such a case the user must run `ALTER TABLE` to
+   * add support for this feature beforehand using the `delta.feature.featureName` table property.
+   *
+   * <p>Refer to {@link FeatureAutoEnabledByMetadata#automaticallyUpdateProtocolOfExistingTables()}
+   * to know more about "auto-update capable" features.
+   *
+   * <p>Note: this method only considers metadata-enabled features. To avoid confusion, the caller
+   * must apply and remove protocol-related table properties from the metadata before calling this
+   * method.
+   */
+  public Optional<Protocol> upgradeProtocolFromMetadataForExistingTable(
+      Metadata metadata, Protocol current) {
+
+    Protocol required =
+        new Protocol(TABLE_FEATURES_MIN_READER_VERSION, TABLE_FEATURES_MIN_WRITER_VERSION)
+            .withFeatures(extractAutomaticallyEnabledFeatures(metadata, current))
+            .normalized();
+
+    if (!required.canUpgradeTo(current)) {
+      // When the current protocol does not satisfy metadata requirement, some additional features
+      // must be supported by the protocol. We assert those features can actually perform the
+      // auto-update.
+      assertMetadataTableFeaturesAutomaticallySupported(
+          current.getImplicitAndExplicitlyEnabledFeatures(),
+          required.getImplicitAndExplicitlyEnabledFeatures());
+      return Optional.of(required.merge(current));
+    } else {
+      return Optional.empty();
+    }
+  }
+
+  /**
+   * Extracts all table features that are enabled by the given metadata and the optional protocol.
+   * This includes all already enabled features (if a protocol is provided), the features enabled
+   * directly by metadata, and all of their (transitive) dependencies.
+   */
+  public Set<TableFeature> extractAutomaticallyEnabledFeatures(
+      Metadata metadata, Protocol protocol) {
+    Set<TableFeature> protocolEnabledFeatures =
+        protocol.getWriterFeatures().stream()
+            .map(TABLE_FEATURE_MAP::get)
+            .map(
+                f -> {
+                  if (f == null) {
+                    throw new IllegalArgumentException("Unknown feature in protocol: " + f);
+                  }
+                  return f;
+                })
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+
+    Set<TableFeature> metadataEnabledFeatures =
+        TableFeatures.TABLE_FEATURES.stream()
+            .filter(f -> f instanceof FeatureAutoEnabledByMetadata)
+            .filter(
+                f ->
+                    ((FeatureAutoEnabledByMetadata) f)
+                        .metadataRequiresFeatureToBeEnabled(protocol, metadata))
+            .collect(Collectors.toSet());
+
+    Set<TableFeature> combinedFeatures = new HashSet<>(protocolEnabledFeatures);
+    combinedFeatures.addAll(metadataEnabledFeatures);
+
+    // Qn for Paddy: Why do we need to add the dependencies here and also in `Protocol.withFeature`
+    return getDependencyClosure(combinedFeatures);
+  }
+
+  /**
+   * Returns the smallest set of table features that contains `features` and that also contains all
+   * dependencies of all features in the returned set.
+   */
+  private Set<TableFeature> getDependencyClosure(Set<TableFeature> features) {
+    Set<TableFeature> requiredFeatures = new HashSet<>(features);
+    features.forEach(feature -> requiredFeatures.addAll(feature.requiredFeatures()));
+
+    if (features.equals(requiredFeatures)) {
+      return features;
+    } else {
+      return getDependencyClosure(requiredFeatures);
+    }
+  }
+
+  /**
+   * Ensure all features listed in `currentFeatures` are also listed in `requiredFeatures`, or, if
+   * one is not listed, it must be capable to auto-update a protocol.
+   *
+   * <p>Refer to FeatureAutomaticallyEnabledByMetadata.automaticallyUpdateProtocolOfExistingTables
+   * to know more about "auto-update capable" features.
+   *
+   * <p>Note: Caller must make sure `requiredFeatures` is obtained from a min protocol that
+   * satisfies a table metadata.
+   */
+  private void assertMetadataTableFeaturesAutomaticallySupported(
+      Set<TableFeature> currentFeatures, Set<TableFeature> requiredFeatures) {
+
+    Set<TableFeature> newFeatures = new HashSet<>(requiredFeatures);
+    newFeatures.removeAll(currentFeatures);
+
+    Set<FeatureAutoEnabledByMetadata> autoUpdateCapableFeatures = new HashSet<>();
+    Set<FeatureAutoEnabledByMetadata> nonAutoUpdateCapableFeatures = new HashSet<>();
+
+    for (TableFeature feature : newFeatures) {
+      if (feature instanceof FeatureAutoEnabledByMetadata) {
+        FeatureAutoEnabledByMetadata autoFeature = (FeatureAutoEnabledByMetadata) feature;
+        if (autoFeature.automaticallyUpdateProtocolOfExistingTables()) {
+          autoUpdateCapableFeatures.add(autoFeature);
+        } else {
+          nonAutoUpdateCapableFeatures.add(autoFeature);
+        }
+      }
+    }
+
+    if (!nonAutoUpdateCapableFeatures.isEmpty()) {
+      // The "current features" we give to the user are from the original protocol, plus
+      // features newly supported by table properties in the current transaction, plus
+      // metadata-enabled features that are auto-update capable. The first two are provided by
+      // `currentFeatures`.
+      Set<TableFeature> allCurrentFeatures = new HashSet<>(currentFeatures);
+      allCurrentFeatures.addAll(
+          autoUpdateCapableFeatures.stream()
+              .map(f -> (TableFeature) f)
+              .collect(Collectors.toSet()));
+
+      // TODO: fix this error message to be more informative
+      throw new UnsupportedOperationException(
+          "The current protocol does not support the following features: "
+              + nonAutoUpdateCapableFeatures
+              + ". The protocol must be updated to support these features. "
+              + "The current protocol supports the following features: "
+              + allCurrentFeatures);
+    }
+  }
+
   private static final Set<String> SUPPORTED_WRITER_FEATURES =
       Collections.unmodifiableSet(
           new HashSet<String>() {
@@ -287,7 +480,7 @@ public class TableFeatures {
         metadata.ifPresent(ColumnMapping::throwOnUnsupportedColumnMappingMode);
         break;
       case 3:
-        List<String> readerFeatures = protocol.getReaderFeatures();
+        Set<String> readerFeatures = protocol.getReaderFeatures();
         if (!SUPPORTED_READER_FEATURES.containsAll(readerFeatures)) {
           Set<String> unsupportedFeatures = new HashSet<>(readerFeatures);
           unsupportedFeatures.removeAll(SUPPORTED_READER_FEATURES);
@@ -491,7 +684,7 @@ public class TableFeatures {
   }
 
   private static boolean isWriterFeatureSupported(Protocol protocol, String featureName) {
-    List<String> writerFeatures = protocol.getWriterFeatures();
+    Set<String> writerFeatures = protocol.getWriterFeatures();
     if (writerFeatures == null) {
       return false;
     }
