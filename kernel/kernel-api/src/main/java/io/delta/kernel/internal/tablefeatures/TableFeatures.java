@@ -59,7 +59,7 @@ public class TableFeatures {
 
   /** A base class for all table legacy writer-only features. */
   public abstract static class LegacyWriterFeature extends TableFeature
-      implements LegacyFeatureType {
+      implements ReaderWriterFeatureType, LegacyFeatureType {
     public LegacyWriterFeature(String featureName, int minWriterVersion) {
       super(featureName, /* minReaderVersion = */ 0, minWriterVersion);
     }
