@@ -161,7 +161,7 @@ public class SnapshotManager {
 
     // Check if writing to the given table protocol version/features is supported in Kernel
     validateWriteSupportedTable(
-        snapshot.getProtocol(), snapshot.getMetadata(), snapshot.getSchema(), tablePath.toString());
+        snapshot.getProtocol(), snapshot.getMetadata(), tablePath.toString());
 
     Path checkpointPath = FileNames.checkpointFileSingular(logPath, version);
 

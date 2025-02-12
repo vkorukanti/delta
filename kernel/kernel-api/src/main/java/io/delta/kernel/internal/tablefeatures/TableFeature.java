@@ -18,6 +18,7 @@ package io.delta.kernel.internal.tablefeatures;
 import static io.delta.kernel.internal.util.Preconditions.checkArgument;
 import static java.util.Objects.requireNonNull;
 
+import io.delta.kernel.internal.actions.Metadata;
 import java.util.Collections;
 import java.util.Set;
 
@@ -117,6 +118,23 @@ public abstract class TableFeature {
   public Set<TableFeature> requiredFeatures() {
     return Collections.emptySet();
   }
+
+  /**
+   * Does Kernel has support to read a table containing this feature? If the feature is a
+   * writer-only feature, this method should always return true.
+   *
+   * @return true if Kernel has support to read a table containing this feature.
+   */
+  public abstract boolean hasKernelReadSupport();
+
+  /**
+   * Does Kernel has support to write a table containing this feature?
+   *
+   * @param metadata the metadata of the table. Sometimes checking the metadata is necessary to know
+   *     the Kernel can write the table or not.
+   * @return true if Kernel has support to write a table containing this feature.
+   */
+  public abstract boolean hasKernelWriteSupport(Metadata metadata);
 
   /**
    * Validate the table feature. This method should throw an exception if the table feature

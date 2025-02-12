@@ -43,10 +43,10 @@ public class Protocol {
         vector.getChild(0).getInt(rowId),
         vector.getChild(1).getInt(rowId),
         vector.getChild(2).isNullAt(rowId)
-            ? emptySet()
+            ? null
             : new HashSet<>(VectorUtils.toJavaList(vector.getChild(2).getArray(rowId))),
         vector.getChild(3).isNullAt(rowId)
-            ? emptySet()
+            ? null
             : new HashSet<>(VectorUtils.toJavaList(vector.getChild(3).getArray(rowId))));
   }
 
@@ -63,7 +63,7 @@ public class Protocol {
   private final Set<String> writerFeatures;
 
   public Protocol(int minReaderVersion, int minWriterVersion) {
-    this(minReaderVersion, minWriterVersion, emptySet(), emptySet());
+    this(minReaderVersion, minWriterVersion, null, null);
   }
 
   public Protocol(
@@ -105,6 +105,7 @@ public class Protocol {
   }
 
   public Set<TableFeature> getExplicitlyEnabledFeatures() {
+    // TODO: Should we throw an exception if we encouter a feature that is not known to Kernel yet?
     return TableFeatures.TABLE_FEATURES.stream()
         .filter(
             f ->
@@ -113,7 +114,7 @@ public class Protocol {
         .collect(Collectors.toSet());
   }
 
-  public Set<TableFeature> getImplicitAndExplicitlyEnabledFeatures() {
+  public Set<TableFeature> getImplicitlyAndExplicitlyEnabledFeatures() {
     Set<TableFeature> enabledFeatures = new HashSet<>();
     enabledFeatures.addAll(getImplicitlyEnabledFeatures());
     enabledFeatures.addAll(getExplicitlyEnabledFeatures());
@@ -144,20 +145,6 @@ public class Protocol {
     protocolMap.put(3, stringArrayValue(new ArrayList<>(writerFeatures)));
 
     return new GenericRow(Protocol.FULL_SCHEMA, protocolMap);
-  }
-
-  public Protocol withNewWriterFeatures(Set<String> writerFeatures) {
-    Tuple2<Integer, Integer> newProtocolVersions =
-        TableFeatures.minProtocolVersionFromAutomaticallyEnabledFeatures(writerFeatures);
-    Set<String> newWriterFeatures = new HashSet<>(writerFeatures);
-    if (this.writerFeatures != null) {
-      newWriterFeatures.addAll(this.writerFeatures);
-    }
-    return new Protocol(
-        newProtocolVersions._1,
-        newProtocolVersions._2,
-        this.readerFeatures == null ? null : new HashSet<>(this.readerFeatures),
-        newWriterFeatures);
   }
 
   /** Create a new {@link Protocol} object with the given {@link TableFeature} enabled. */
@@ -233,8 +220,8 @@ public class Protocol {
    */
   public boolean canUpgradeTo(Protocol to) {
     // All features supported by `this` are supported by `to`.
-    return to.getImplicitAndExplicitlyEnabledFeatures()
-        .containsAll(this.getImplicitAndExplicitlyEnabledFeatures());
+    return to.getImplicitlyAndExplicitlyEnabledFeatures()
+        .containsAll(this.getImplicitlyAndExplicitlyEnabledFeatures());
   }
 
   /**
@@ -261,8 +248,8 @@ public class Protocol {
     int minWriterVersion = versions._2;
     Protocol newProtocol = new Protocol(minReaderVersion, minWriterVersion);
 
-    if (this.getImplicitAndExplicitlyEnabledFeatures()
-        .equals(newProtocol.getImplicitAndExplicitlyEnabledFeatures())) {
+    if (this.getImplicitlyAndExplicitlyEnabledFeatures()
+        .equals(newProtocol.getImplicitlyAndExplicitlyEnabledFeatures())) {
       return newProtocol;
     } else {
       // means we have some that is added after table feature support.
@@ -351,5 +338,22 @@ public class Protocol {
 
   private boolean supportsWriterFeatures() {
     return TableFeatures.supportsWriterFeatures(minWriterVersion);
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (o == null || getClass() != o.getClass()) {
+      return false;
+    }
+    Protocol protocol = (Protocol) o;
+    return minReaderVersion == protocol.minReaderVersion
+        && minWriterVersion == protocol.minWriterVersion
+        && Objects.equals(readerFeatures, protocol.readerFeatures)
+        && Objects.equals(writerFeatures, protocol.writerFeatures);
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(minReaderVersion, minWriterVersion, readerFeatures, writerFeatures);
   }
 }

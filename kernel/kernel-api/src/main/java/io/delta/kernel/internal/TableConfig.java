@@ -232,6 +232,15 @@ public class TableConfig<T> {
           "needs to be a boolean.",
           true);
 
+  public static final TableConfig<String> CHECKPOINT_POLICY =
+      new TableConfig<>(
+          "delta.checkpointPolicy",
+          "classic",
+          v -> v,
+          value -> value.equals("classic") || value.equals("v2"),
+          "needs to be a string and one of 'classic' or 'v2'.",
+          true);
+
   /** All the valid properties that can be set on the table. */
   private static final Map<String, TableConfig<?>> VALID_PROPERTIES =
       Collections.unmodifiableMap(
@@ -245,6 +254,14 @@ public class TableConfig<T> {
               addConfig(this, COLUMN_MAPPING_MODE);
               addConfig(this, ICEBERG_COMPAT_V2_ENABLED);
               addConfig(this, COLUMN_MAPPING_MAX_COLUMN_ID);
+              addConfig(this, APPEND_ONLY);
+              addConfig(this, CHANGE_DATA_FEED);
+              addConfig(this, ENABLE_DELETION_VECTORS_CREATION);
+              addConfig(this, ROW_TRACKING_ENABLED);
+              addConfig(this, LOG_RETENTION);
+              addConfig(this, EXPIRED_LOG_CLEANUP_ENABLED);
+              addConfig(this, ENABLE_TYPE_WIDENING);
+              addConfig(this, CHECKPOINT_POLICY);
             }
           });
 

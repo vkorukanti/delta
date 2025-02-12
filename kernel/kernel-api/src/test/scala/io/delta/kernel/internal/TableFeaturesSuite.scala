@@ -108,7 +108,7 @@ class TableFeaturesSuite extends AnyFunSuite {
     protocol: Protocol,
     metadata: Metadata = null,
     schema: StructType = createTestSchema()): Unit = {
-    validateWriteSupportedTable(protocol, metadata, schema, "/test/table")
+    validateWriteSupportedTable(protocol, metadata, "/test/table")
   }
 
   def checkUnsupported(
@@ -116,7 +116,7 @@ class TableFeaturesSuite extends AnyFunSuite {
     metadata: Metadata = null,
     schema: StructType = createTestSchema()): Unit = {
     intercept[KernelException] {
-      validateWriteSupportedTable(protocol, metadata, schema, "/test/table")
+      validateWriteSupportedTable(protocol, metadata, "/test/table")
     }
   }
 
@@ -126,8 +126,8 @@ class TableFeaturesSuite extends AnyFunSuite {
       0,
       minWriterVersion,
       // reader features - it doesn't matter as the read fails anyway before the writer check
-      Collections.emptyList(),
-      writerFeatures.toSeq.asJava
+      null,
+      writerFeatures.toSet.asJava
     )
   }
 
