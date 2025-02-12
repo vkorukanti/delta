@@ -29,6 +29,7 @@ import io.delta.kernel.internal.fs.Path;
 import io.delta.kernel.internal.metrics.SnapshotQueryContext;
 import io.delta.kernel.internal.metrics.SnapshotReportImpl;
 import io.delta.kernel.internal.snapshot.SnapshotManager;
+import io.delta.kernel.internal.tablefeatures.TableFeatures;
 import io.delta.kernel.internal.util.Clock;
 import io.delta.kernel.metrics.SnapshotReport;
 import io.delta.kernel.types.StructField;
@@ -39,7 +40,6 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
@@ -192,8 +192,7 @@ public class TableImpl implements Table {
               for (int rowId = 0; rowId < protocolVector.getSize(); rowId++) {
                 if (!protocolVector.isNullAt(rowId)) {
                   Protocol protocol = Protocol.fromColumnVector(protocolVector, rowId);
-                  TableFeatures.validateReadSupportedTable(
-                      protocol, getDataPath().toString(), Optional.empty());
+                  TableFeatures.validateReadSupportedTable(protocol, getDataPath().toString());
                 }
               }
               if (shouldDropProtocolColumn) {

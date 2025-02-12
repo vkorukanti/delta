@@ -19,6 +19,7 @@ import static io.delta.kernel.internal.DeltaErrors.requiresSchemaForNewTable;
 import static io.delta.kernel.internal.DeltaErrors.tableAlreadyExists;
 import static io.delta.kernel.internal.TransactionImpl.DEFAULT_READ_VERSION;
 import static io.delta.kernel.internal.TransactionImpl.DEFAULT_WRITE_VERSION;
+import static io.delta.kernel.internal.tablefeatures.TableFeatures.extractAutomaticallyEnabledFeatures;
 import static io.delta.kernel.internal.util.ColumnMapping.isColumnMappingModeEnabled;
 import static io.delta.kernel.internal.util.Preconditions.checkArgument;
 import static io.delta.kernel.internal.util.SchemaUtils.casePreservingPartitionColNames;
@@ -36,6 +37,8 @@ import io.delta.kernel.internal.metrics.SnapshotQueryContext;
 import io.delta.kernel.internal.replay.LogReplay;
 import io.delta.kernel.internal.snapshot.LogSegment;
 import io.delta.kernel.internal.snapshot.SnapshotHint;
+import io.delta.kernel.internal.tablefeatures.TableFeature;
+import io.delta.kernel.internal.tablefeatures.TableFeatures;
 import io.delta.kernel.internal.util.ColumnMapping;
 import io.delta.kernel.internal.util.ColumnMapping.ColumnMappingMode;
 import io.delta.kernel.internal.util.SchemaUtils;
@@ -135,6 +138,7 @@ public class TransactionBuilderImpl implements TransactionBuilder {
     boolean shouldUpdateProtocol = false;
     Metadata metadata = snapshot.getMetadata();
     Protocol protocol = snapshot.getProtocol();
+
     if (tableProperties.isPresent()) {
       Map<String, String> validatedProperties =
           TableConfig.validateDeltaProperties(tableProperties.get());
@@ -149,17 +153,17 @@ public class TransactionBuilderImpl implements TransactionBuilder {
         metadata = metadata.withNewConfiguration(newProperties);
       }
 
-      Set<String> newWriterFeatures =
-          TableFeatures.extractAutomaticallyEnabledWriterFeatures(metadata, protocol);
-      if (!newWriterFeatures.isEmpty()) {
-        logger.info("Automatically enabling writer features: {}", newWriterFeatures);
-        shouldUpdateProtocol = true;
-        List<String> oldWriterFeatures = protocol.getWriterFeatures();
-        protocol = protocol.withNewWriterFeatures(newWriterFeatures);
-        List<String> curWriterFeatures = protocol.getWriterFeatures();
-        checkArgument(!Objects.equals(oldWriterFeatures, curWriterFeatures));
-        TableFeatures.validateWriteSupportedTable(
-            protocol, metadata, metadata.getSchema(), table.getPath(engine));
+      Set<TableFeature> enabledFeatures = extractAutomaticallyEnabledFeatures(metadata, protocol);
+      if (!enabledFeatures.isEmpty()) {
+        logger.info("Automatically enabling features: {}", enabledFeatures);
+        Protocol oldProtocol = protocol;
+        protocol = protocol.withFeatures(enabledFeatures);
+
+        if (protocol != oldProtocol) {
+          logger.info("Updated protocol: {}", protocol);
+          shouldUpdateProtocol = true;
+        }
+        TableFeatures.validateWriteSupportedTable(protocol, metadata, table.getPath(engine));
       }
     }
 
@@ -184,10 +188,7 @@ public class TransactionBuilderImpl implements TransactionBuilder {
     String tablePath = table.getPath(engine);
     // Validate the table has no features that Kernel doesn't yet support writing into it.
     TableFeatures.validateWriteSupportedTable(
-        snapshot.getProtocol(),
-        snapshot.getMetadata(),
-        snapshot.getMetadata().getSchema(),
-        tablePath);
+        snapshot.getProtocol(), snapshot.getMetadata(), tablePath);
 
     if (!isNewTable) {
       if (schema.isPresent()) {
