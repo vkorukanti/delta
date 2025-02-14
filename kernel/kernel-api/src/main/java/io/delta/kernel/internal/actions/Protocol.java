@@ -381,21 +381,4 @@ public class Protocol {
     // in the set with reader version 2 unless the writer version is at least 5.
     return mergedProtocol.denormalizedNormalized();
   }
-
-  /////////////////////////////////////////////////////////////////////////////////////////////////
-  /// Legacy method which will be removed after the table feature integration is done           ///
-  /////////////////////////////////////////////////////////////////////////////////////////////////
-  public Protocol withNewWriterFeatures(Set<String> writerFeatures) {
-    Tuple2<Integer, Integer> newProtocolVersions =
-        TableFeatures.minProtocolVersionFromAutomaticallyEnabledFeatures(writerFeatures);
-    Set<String> newWriterFeatures = new HashSet<>(writerFeatures);
-    if (this.writerFeatures != null) {
-      newWriterFeatures.addAll(this.writerFeatures);
-    }
-    return new Protocol(
-        newProtocolVersions._1,
-        newProtocolVersions._2,
-        this.readerFeatures == null ? null : new HashSet<>(this.readerFeatures),
-        newWriterFeatures);
-  }
 }
