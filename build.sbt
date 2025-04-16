@@ -64,6 +64,8 @@ sharing / sparkVersion := getSparkVersion()
 // Dependent library versions
 val defaultSparkVersion = LATEST_RELEASED_SPARK_VERSION
 val flinkVersion = "1.16.1"
+val kafkaVersion = "3.8.0"
+val icebergVersionForKafkaConnector = "1.6.1"
 val hadoopVersion = "3.3.4"
 val scalaTestVersion = "3.2.15"
 val scalaTestVersionForConnectors = "3.0.8"
@@ -1541,6 +1543,118 @@ lazy val flink = (project in file("connectors/flink"))
     //  standalone-specific import orders
     javaCheckstyleSettings("dev/connectors-checkstyle.xml")
   ).configureUnidoc()
+
+import Keys._
+
+lazy val copyDependencies = taskKey[Unit]("Copy all dependencies to a lib folder")
+
+lazy val kafka = (project in file("connectors/kafka"))
+  .dependsOn(kernelApi)
+  .dependsOn(kernelDefaults)
+  .settings(
+    name := "delta-kafka",
+    commonSettings,
+    javaOnlyReleaseSettings,
+    javafmtCheckSettings,
+    excludeDependencies += "com.github.luben" % "zstd-jni" % "1.5.0-1",
+    libraryDependencies ++= Seq(
+      "org.apache.parquet" % "parquet-hadoop" % "1.13.1" excludeAll (
+        ExclusionRule("com.github.luben", "zstd-jni")
+      ),
+      "org.apache.kafka" % "connect-api" % kafkaVersion,
+      "org.apache.kafka" % "connect-json" % kafkaVersion,
+      "org.apache.kafka" % "kafka-clients" % kafkaVersion,
+      "org.apache.iceberg" % "iceberg-core" % "1.6.1",
+      "org.apache.iceberg" % "iceberg-common" % "1.6.1",
+      "org.apache.iceberg" % "iceberg-parquet" % "1.6.1" excludeAll (
+        ExclusionRule("com.github.luben", "zstd-jni")
+      ),
+      "org.apache.iceberg" % "iceberg-aws" % "1.6.1",
+      "software.amazon.awssdk" % "s3" % "2.24.0",
+      "software.amazon.awssdk" % "sts" % "2.24.0",
+      "org.apache.iceberg" % "iceberg-kafka-connect" % "1.6.1",
+      "org.apache.hadoop" % "hadoop-aws" % hadoopVersion % "provided",
+      "com.github.luben" % "zstd-jni" % "1.5.6-3",
+      "org.awaitility" % "awaitility" % "4.2.2" % "test",
+      "org.assertj" % "assertj-core" % "3.26.3" % "test",
+      "org.apache.iceberg" % "iceberg-aws" % "1.6.1" % Test,
+      "software.amazon.awssdk" % "s3" % "2.24.0" % Test,
+      "software.amazon.awssdk" % "sts" % "2.24.0" % Test,
+      "org.testcontainers" % "testcontainers" % "1.20.1" % Test,
+      "org.junit.jupiter" % "junit-jupiter" % "5.10.1" % Test,
+      "org.junit.jupiter" % "junit-jupiter-engine" % "5.10.1" % Test,
+      "org.junit.platform" % "junit-platform-suite-api" % "1.10.3" % Test,
+      "org.junit.platform" % "junit-platform-suite-engine" % "1.10.3" % Test,
+      "org.junit.vintage" % "junit-vintage-engine" % "5.10.1" % Test,
+      "org.apache.kafka" % "kafka-streams-test-utils" % kafkaVersion % Test,
+      "org.apache.kafka" % "connect-runtime" % kafkaVersion,
+      "org.apache.kafka" % "connect-runtime" % kafkaVersion % Test classifier "test",
+      "org.apache.kafka" %% "kafka-streams-scala" % kafkaVersion % Test,
+      "org.apache.kafka" %% "kafka" % kafkaVersion % Test,
+      "org.apache.kafka" %% "kafka" % kafkaVersion % Test classifier "test",
+      "org.apache.kafka" % "kafka-clients" % kafkaVersion % Test classifier "test",
+    ),
+    dependencyOverrides += "com.github.luben" % "zstd-jni" % "1.5.6-3",
+    // Compile, patch and generated Iceberg JARs
+    copyDependencies := {
+      val runtimeRoot = target.value / "delta-kafka-connect-runtime"
+      val libDir = runtimeRoot / "lib"
+      IO.createDirectory(libDir)
+      val dependencies = (Compile / managedClasspath).value
+      println("dependencies: " + dependencies)
+      dependencies.files.foreach { file =>
+        println(s"Copying ${file.getName} to ${libDir.getAbsolutePath}")
+        IO.copyFile(file, libDir / file.name)
+      }
+      println(s"Dependencies copied to ${libDir.getAbsolutePath}")
+      val manifestFile = target.value / "../src/main/resources/manifest.json"
+      IO.copyFile(manifestFile, runtimeRoot / "manifest.json")
+    },
+    // Shade jackson libraries so that connector developers don't have to worry
+    // about jackson version conflicts.
+    Compile / packageBin := ((assembly).dependsOn(copyDependencies)).value,
+    assembly / assemblyMergeStrategy := {
+      // Discard `module-info.class` to fix the `different file contents found` error.
+      // TODO Upgrade SBT to 1.5 which will do this automatically
+      case "module-info.class" => MergeStrategy.discard
+      case PathList("mozilla", "public-suffix-list.txt") => MergeStrategy.first
+      case PathList("META-INF", "services", xs @ _*) => MergeStrategy.discard
+      case "META-INF/versions/9/module-info.class" => MergeStrategy.discard
+      case x =>
+        val oldStrategy = (assembly / assemblyMergeStrategy).value
+        oldStrategy(x)
+    },
+    // Generate the package object to provide the version information in runtime.
+    Compile / sourceGenerators += Def.task {
+      val file = (Compile / sourceManaged).value / "io" / "delta" / "kafka" / "DeltaKafkaMeta.java"
+      IO.write(file,
+        s"""/*
+           | * Copyright (2024) The Delta Lake Project Authors.
+           | *
+           | * Licensed under the Apache License, Version 2.0 (the "License");
+           | * you may not use this file except in compliance with the License.
+           | * You may obtain a copy of the License at
+           | *
+           | * http://www.apache.org/licenses/LICENSE-2.0
+           | *
+           | * Unless required by applicable law or agreed to in writing, software
+           | * distributed under the License is distributed on an "AS IS" BASIS,
+           | * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+           | * See the License for the specific language governing permissions and
+           | * limitations under the License.
+           | */
+           |package io.delta.kafka;
+           |
+           |public final class DeltaKafkaMeta {
+           |    public static final String DELTA_KAFKA_CONNECT_VERSION = "${version.value}";
+           |}
+           |""".stripMargin)
+      Seq(file)
+    },
+    // Unidoc settings
+    unidocSourceFilePatterns := Seq(SourceFilePattern("io/delta/kafka/")),
+  ).configureUnidoc(docTitle = "Delta Kafka Connect")
+
 
 /**
  * Get list of python files and return the mapping between source files and target paths
