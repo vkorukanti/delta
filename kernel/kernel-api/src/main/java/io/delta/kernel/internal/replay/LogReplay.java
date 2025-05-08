@@ -155,9 +155,16 @@ public class LogReplay {
     this.logSegment = logSegment;
     this.protocolAndMetadata =
         snapshotMetrics.loadInitialDeltaActionsTimer.time(
-            () ->
-                loadTableProtocolAndMetadata(
-                    engine, logSegment, newerSnapshotHintAndCurrentCrcInfo._1, snapshotVersion));
+            () -> {
+              Tuple2<Protocol, Metadata> protocolAndMetadata =
+                  loadTableProtocolAndMetadata(
+                      engine, logSegment, newerSnapshotHintAndCurrentCrcInfo._1, snapshotVersion);
+
+              TableFeatures.validateKernelCanReadTheTable(
+                  protocolAndMetadata._1, dataPath.toString());
+
+              return protocolAndMetadata;
+            });
     // Lazy loading of domain metadata only when needed
     this.domainMetadataMap = new Lazy<>(() -> loadDomainMetadataMap(engine));
   }
@@ -294,7 +301,6 @@ public class LogReplay {
 
               if (protocol != null) {
                 // Stop since we have found the latest Protocol and Metadata.
-                TableFeatures.validateKernelCanReadTheTable(protocol, dataPath.toString());
                 return new Tuple2<>(protocol, metadata);
               }
 
