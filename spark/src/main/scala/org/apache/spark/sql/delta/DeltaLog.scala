@@ -138,17 +138,6 @@ class DeltaLog private(
    |  Configuration  |
    * --------------- */
 
-  /**
-   * The max lineage length of a Snapshot before Delta forces to build a Snapshot from scratch.
-   * Delta will build a Snapshot on top of the previous one if it doesn't see a checkpoint.
-   * However, there is a race condition that when two writers are writing at the same time,
-   * a writer may fail to pick up checkpoints written by another one, and the lineage will grow
-   * and finally cause StackOverflowError. Hence we have to force to build a Snapshot from scratch
-   * when the lineage length is too large to avoid hitting StackOverflowError.
-   */
-  def maxSnapshotLineageLength: Int =
-    spark.sessionState.conf.getConf(DeltaSQLConf.DELTA_MAX_SNAPSHOT_LINEAGE_LENGTH)
-
   private[delta] def incrementalCommitEnabled: Boolean = {
     spark.conf.get(DeltaSQLConf.INCREMENTAL_COMMIT_ENABLED)
   }

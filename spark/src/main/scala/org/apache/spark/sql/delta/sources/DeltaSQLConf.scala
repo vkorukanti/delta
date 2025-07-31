@@ -507,15 +507,6 @@ trait DeltaSQLConfBase {
       .booleanConf
       .createWithDefault(true)
 
-  val DELTA_MAX_SNAPSHOT_LINEAGE_LENGTH =
-    buildConf("maxSnapshotLineageLength")
-      .internal()
-      .doc("The max lineage length of a Snapshot before Delta forces to build a Snapshot from " +
-        "scratch.")
-      .intConf
-      .checkValue(_ > 0, "maxSnapshotLineageLength must be positive.")
-      .createWithDefault(50)
-
   val DELTA_REPLACE_COLUMNS_SAFE =
     buildConf("alter.replaceColumns.safe.enabled")
       .internal()

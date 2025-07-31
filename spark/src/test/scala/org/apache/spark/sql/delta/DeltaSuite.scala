@@ -1758,27 +1758,6 @@ class DeltaSuite extends QueryTest
     }
   }
 
-  test("SC-11332: session isolation for cached delta logs") {
-    withTempDir { tempDir =>
-      val path = tempDir.getCanonicalPath
-      val oldSession = spark
-      val deltaLog = DeltaLog.forTable(spark, path)
-      val maxSLL = deltaLog.maxSnapshotLineageLength
-
-      val activeSession = oldSession.newSession()
-      SparkSession.setActiveSession(activeSession)
-      activeSession.sessionState.conf.setConf(
-        DeltaSQLConf.DELTA_MAX_SNAPSHOT_LINEAGE_LENGTH, maxSLL + 1)
-
-      // deltaLog fetches conf from active session
-      assert(deltaLog.maxSnapshotLineageLength == maxSLL + 1)
-
-      // new session confs don't propagate to old session
-      assert(maxSLL ==
-        oldSession.sessionState.conf.getConf(DeltaSQLConf.DELTA_MAX_SNAPSHOT_LINEAGE_LENGTH))
-    }
-  }
-
   test("SC-11198: global configs - save to path") {
     withTempDir { dir =>
       val path = dir.getCanonicalPath
