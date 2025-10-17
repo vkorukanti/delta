@@ -43,7 +43,7 @@ import org.apache.parquet.schema.LogicalTypeAnnotation.DecimalLogicalTypeAnnotat
 import org.apache.parquet.schema.Type.Repetition;
 
 /** Utility methods for Delta schema to Parquet schema conversion. */
-class ParquetSchemaUtils {
+public class ParquetSchemaUtils {
 
   /**
    * Constants that help if a Decimal type can be stored as INT32 or INT64 based on the precision.
@@ -148,7 +148,7 @@ class ParquetSchemaUtils {
    * @param structType Kernel schema object
    * @return {@link MessageType} representing the schema in Parquet format.
    */
-  static MessageType toParquetSchema(StructType structType) {
+  public static MessageType toParquetSchema(StructType structType) {
     BiFunction<Optional<Integer>, Boolean, Optional<Integer>> fieldIdValidator =
         createFieldIdValidator(structType);
     List<Type> types = new ArrayList<>();

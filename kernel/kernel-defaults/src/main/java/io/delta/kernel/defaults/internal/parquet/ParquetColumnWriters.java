@@ -75,7 +75,7 @@ class ParquetColumnWriters {
     return createColumnVectorWritersHelper(schema, columnVectors);
   }
 
-  private static ColumnWriter[] createColumnVectorWritersHelper(
+  static ColumnWriter[] createColumnVectorWritersHelper(
       StructType schema, ColumnVector[] columnVectors) {
     int numCols = schema.length();
     checkArgument(
@@ -91,7 +91,7 @@ class ParquetColumnWriters {
     return columnWriters;
   }
 
-  private static ColumnWriter createColumnWriter(
+  static ColumnWriter createColumnWriter(
       String colName, int fieldIndex, ColumnVector columnVector) {
     DataType dataType = columnVector.getDataType();
 

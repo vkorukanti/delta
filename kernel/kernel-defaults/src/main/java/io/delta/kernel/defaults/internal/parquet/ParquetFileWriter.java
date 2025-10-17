@@ -16,11 +16,8 @@
 package io.delta.kernel.defaults.internal.parquet;
 
 import static io.delta.kernel.defaults.internal.parquet.ParquetIOUtils.createParquetOutputFile;
-import static io.delta.kernel.defaults.internal.parquet.ParquetStatsReader.readDataFileStatistics;
 import static io.delta.kernel.internal.util.Preconditions.checkArgument;
-import static java.util.Collections.emptyMap;
 import static java.util.Objects.requireNonNull;
-import static org.apache.parquet.hadoop.ParquetOutputFormat.*;
 
 import io.delta.kernel.Meta;
 import io.delta.kernel.data.*;
@@ -30,18 +27,14 @@ import io.delta.kernel.defaults.internal.parquet.ParquetColumnWriters.ColumnWrit
 import io.delta.kernel.expressions.Column;
 import io.delta.kernel.internal.fs.Path;
 import io.delta.kernel.internal.util.Utils;
-import io.delta.kernel.statistics.DataFileStatistics;
 import io.delta.kernel.types.StructType;
 import io.delta.kernel.utils.*;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.*;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.parquet.column.ParquetProperties.WriterVersion;
-import org.apache.parquet.hadoop.ParquetOutputFormat;
 import org.apache.parquet.hadoop.ParquetWriter;
 import org.apache.parquet.hadoop.api.WriteSupport;
-import org.apache.parquet.hadoop.metadata.CompressionCodecName;
 import org.apache.parquet.io.api.RecordConsumer;
 import org.apache.parquet.schema.MessageType;
 
@@ -180,7 +173,8 @@ public class ParquetFileWriter {
             createParquetOutputFile(generateNextOutputFile(), atomicWrite);
         assert batchWriteSupport != null : "batchWriteSupport is not initialized";
         long currentFileRowCount = 0; // tracks the number of rows written to the current file
-        try (ParquetWriter<Integer> writer = createWriter(parquetOutputFile, batchWriteSupport)) {
+        try (ParquetWriter<Integer> writer =
+            ParquetIOUtils.createWriter(fileIO, parquetOutputFile, batchWriteSupport)) {
           boolean maxFileSizeReached;
           do {
             if (consumeNextRow(writer)) {
@@ -199,7 +193,12 @@ public class ParquetFileWriter {
         }
 
         return Optional.of(
-            constructDataFileStatus(parquetOutputFile.getPath(), dataSchema, currentFileRowCount));
+            ParquetIOUtils.constructDataFileStatus(
+                fileIO,
+                parquetOutputFile.getPath(),
+                dataSchema,
+                statsColumns,
+                currentFileRowCount));
       }
 
       /**
@@ -359,115 +358,5 @@ public class ParquetFileWriter {
     String fileName = String.format("%s-%03d.parquet", UUID.randomUUID(), currentFileNumber++);
     String filePath = new Path(location, fileName).toString();
     return fileIO.newOutputFile(filePath);
-  }
-
-  /**
-   * Helper method to create {@link ParquetWriter} for given file path and write support. It makes
-   * use of configuration options in `configuration` to configure the writer. Different available
-   * configuration options are defined in {@link ParquetOutputFormat}.
-   */
-  private ParquetWriter<Integer> createWriter(
-      org.apache.parquet.io.OutputFile outputFile, WriteSupport<Integer> writeSupport)
-      throws IOException {
-    ParquetRowDataBuilder rowDataBuilder = new ParquetRowDataBuilder(outputFile, writeSupport);
-
-    fileIO
-        .getConf(COMPRESSION)
-        .ifPresent(
-            compression ->
-                rowDataBuilder.withCompressionCodec(CompressionCodecName.fromConf(compression)));
-
-    fileIO.getConf(BLOCK_SIZE).map(Long::parseLong).ifPresent(rowDataBuilder::withRowGroupSize);
-
-    fileIO.getConf(PAGE_SIZE).map(Integer::parseInt).ifPresent(rowDataBuilder::withPageSize);
-
-    fileIO
-        .getConf(DICTIONARY_PAGE_SIZE)
-        .map(Integer::parseInt)
-        .ifPresent(rowDataBuilder::withDictionaryPageSize);
-
-    fileIO
-        .getConf(MAX_PADDING_BYTES)
-        .map(Integer::parseInt)
-        .ifPresent(rowDataBuilder::withMaxPaddingSize);
-
-    fileIO
-        .getConf(ENABLE_DICTIONARY)
-        .map(Boolean::parseBoolean)
-        .ifPresent(rowDataBuilder::withDictionaryEncoding);
-
-    fileIO.getConf(VALIDATION).map(Boolean::parseBoolean).ifPresent(rowDataBuilder::withValidation);
-
-    fileIO
-        .getConf(WRITER_VERSION)
-        .map(WriterVersion::fromString)
-        .ifPresent(rowDataBuilder::withWriterVersion);
-
-    return rowDataBuilder.build();
-  }
-
-  private static class ParquetRowDataBuilder
-      extends ParquetWriter.Builder<Integer, ParquetRowDataBuilder> {
-    private final WriteSupport<Integer> writeSupport;
-
-    protected ParquetRowDataBuilder(
-        org.apache.parquet.io.OutputFile outputFile, WriteSupport<Integer> writeSupport) {
-      super(outputFile);
-      this.writeSupport = requireNonNull(writeSupport, "writeSupport is null");
-    }
-
-    @Override
-    protected ParquetRowDataBuilder self() {
-      return this;
-    }
-
-    @Override
-    protected WriteSupport<Integer> getWriteSupport(Configuration conf) {
-      return writeSupport;
-    }
-  }
-
-  /**
-   * Construct the {@link DataFileStatus} for the given file path. It reads the file status and
-   * Parquet footer to compute the statistics for the file.
-   *
-   * <p>Potential improvement in future to directly compute the statistics while writing the file if
-   * this becomes a sufficiently large part of the write operation time.
-   *
-   * @param path the path of the file
-   * @param dataSchema the schema of the data in the file
-   * @param numRows the number of rows in the file. If no column stats are required, this is used to
-   *     construct the {@link DataFileStatistics}. Otherwise, the stats are read from the file.
-   * @return the {@link DataFileStatus} for the file
-   */
-  private DataFileStatus constructDataFileStatus(String path, StructType dataSchema, long numRows) {
-    try {
-      // Get the FileStatus to figure out the file size and modification time
-      FileStatus fileStatus = fileIO.getFileStatus(path);
-      String resolvedPath = fileIO.resolvePath(path);
-
-      DataFileStatistics stats;
-      if (statsColumns.isEmpty()) {
-        stats =
-            new DataFileStatistics(
-                numRows,
-                emptyMap() /* minValues */,
-                emptyMap() /* maxValues */,
-                emptyMap() /* nullCount */,
-                Optional.empty() /* tightBounds */);
-      } else {
-        stats =
-            readDataFileStatistics(
-                fileIO.newInputFile(resolvedPath, fileStatus.getSize()), dataSchema, statsColumns);
-      }
-
-      return new DataFileStatus(
-          resolvedPath,
-          fileStatus.getSize(),
-          fileStatus.getModificationTime(),
-          Optional.ofNullable(stats));
-    } catch (IOException ioe) {
-      throw new UncheckedIOException("Failed to read the stats for: " + path, ioe);
-    }
   }
 }
